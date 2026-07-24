@@ -65,4 +65,18 @@ Public Module TabExportHelper
             Return False
         End Try
     End Function
+
+    ''' <summary>
+    ''' WinForms z-order: Controls(0) is the front (top-most). Bitmap compositing must
+    ''' paint back-to-front so the top-most layer is drawn last (visible on top).
+    ''' Returns indices: Count-1, Count-2, …, 0.
+    ''' </summary>
+    Public Function BottomToTopControlIndices(controlCount As Integer) As Integer()
+        If controlCount <= 0 Then Return Array.Empty(Of Integer)()
+        Dim result(controlCount - 1) As Integer
+        For i = 0 To controlCount - 1
+            result(i) = controlCount - 1 - i
+        Next
+        Return result
+    End Function
 End Module

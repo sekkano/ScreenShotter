@@ -55,4 +55,14 @@ public class TabExportHelperTests
         Assert.False(TabExportHelper.IsValidSavePath("   "));
         Assert.True(TabExportHelper.IsValidSavePath("tab_export.png"));
     }
+
+    [Fact]
+    public void BottomToTopControlIndices_PaintsFrontLast()
+    {
+        // WinForms: index 0 = front (top). Paint order must end with 0.
+        var indices = TabExportHelper.BottomToTopControlIndices(3);
+        Assert.Equal(new[] { 2, 1, 0 }, indices);
+        Assert.Empty(TabExportHelper.BottomToTopControlIndices(0));
+        Assert.Equal(new[] { 0 }, TabExportHelper.BottomToTopControlIndices(1));
+    }
 }

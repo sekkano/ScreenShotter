@@ -122,10 +122,11 @@ Public Class ScreenshotCanvas
     Public Function RenderTabComposite() As Bitmap
         If _boxes.Count = 0 Then Return Nothing
 
-        ' Bottom → top paint order matches WinForms Controls collection
+        ' WinForms: Controls(0) is front/top. Paint back→front so the top-most
+        ' screenshot is drawn last and stays on top in the export (matches the app).
         Dim ordered = New List(Of MovableScreenshotBox)()
-        For Each ctrl As Control In Controls
-            Dim box = TryCast(ctrl, MovableScreenshotBox)
+        For Each idx In TabExportHelper.BottomToTopControlIndices(Controls.Count)
+            Dim box = TryCast(Controls(idx), MovableScreenshotBox)
             If box IsNot Nothing Then ordered.Add(box)
         Next
         If ordered.Count = 0 Then Return Nothing
