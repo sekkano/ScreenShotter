@@ -34,6 +34,20 @@
         Return MyBase.ProcessCmdKey(msg, keyData)
     End Function
 
+    ''' <summary>
+    ''' When the window is inactive, the first click both activates and reaches the control
+    ''' (buttons, screenshots) — no separate "focus click" required.
+    ''' </summary>
+    Protected Overrides Sub WndProc(ByRef m As Message)
+        If m.Msg = MouseActivateHelper.WM_MOUSEACTIVATE Then
+            MyBase.WndProc(m)
+            ' Prefer activate + pass click through; never eat the activating click.
+            m.Result = MouseActivateHelper.ActivateAndPassClick
+            Return
+        End If
+        MyBase.WndProc(m)
+    End Sub
+
     Private Sub btnCapture_Click(sender As Object, e As EventArgs) Handles btnCapture.Click
         StartCapture()
     End Sub

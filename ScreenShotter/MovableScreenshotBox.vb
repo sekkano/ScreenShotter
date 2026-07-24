@@ -473,6 +473,12 @@ Public Class MovableScreenshotBox
             Return
         End If
 
+        If m.Msg = MouseActivateHelper.WM_MOUSEACTIVATE Then
+            MyBase.WndProc(m)
+            m.Result = MouseActivateHelper.ActivateAndPassClick
+            Return
+        End If
+
         MyBase.WndProc(m)
     End Sub
 

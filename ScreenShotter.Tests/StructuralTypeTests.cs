@@ -68,6 +68,10 @@ public class StructuralTypeTests
         Assert.NotNull(typeof(WheelScrollHelper).GetMethod("NextScrollPosition", new[] { typeof(Point), typeof(int), typeof(int) }));
         Assert.NotNull(typeof(WheelScrollHelper).GetMethod("IsScreenshotImageControl", new[] { typeof(Control) }));
 
+        // First-click activate without eating the mouse message
+        Assert.NotNull(typeof(MouseActivateHelper).GetMethod("WithoutEatingClick", new[] { typeof(int) }));
+        Assert.True(typeof(ClickThroughToolStrip).IsSubclassOf(typeof(ToolStrip)));
+
         // Main form identity
         Assert.Equal("frmScreenShotter", typeof(frmScreenShotter).Name);
         Assert.True(typeof(frmScreenShotter).IsSubclassOf(typeof(Form)));

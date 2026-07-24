@@ -22,7 +22,7 @@ Partial Class frmScreenShotter
     'Do not modify it using the code editor.
     <System.Diagnostics.DebuggerStepThrough()>
     Private Sub InitializeComponent()
-        toolStrip = New ToolStrip()
+        toolStrip = New ClickThroughToolStrip()
         btnCapture = New ToolStripButton()
         toolStripSeparator1 = New ToolStripSeparator()
         btnSave = New ToolStripButton()
@@ -172,7 +172,7 @@ Partial Class frmScreenShotter
         PerformLayout()
     End Sub
 
-    Friend WithEvents toolStrip As ToolStrip
+    Friend WithEvents toolStrip As ClickThroughToolStrip
     Friend WithEvents btnCapture As ToolStripButton
     Friend WithEvents toolStripSeparator1 As ToolStripSeparator
     Friend WithEvents btnSave As ToolStripButton
