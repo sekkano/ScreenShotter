@@ -111,4 +111,26 @@ public class WorkspaceModelTests
         Assert.False(tab.RemoveScreenshot(drop.Id)); // already gone
         Assert.False(tab.RemoveScreenshot(Guid.NewGuid()));
     }
+
+    [Fact]
+    public void AddTab_DefaultName_UsesCurrentCount_NotLifetimeCounter()
+    {
+        var workspace = new WorkspaceModel();
+        Assert.Equal("Tab 1", workspace.AddTab().Name);
+        Assert.Equal("Tab 2", workspace.AddTab().Name);
+        Assert.True(workspace.RemoveTabAt(1));
+        // After closing Tab 2, next default name is Tab 2 again (count-based)
+        Assert.Equal("Tab 2", workspace.AddTab().Name);
+    }
+
+    [Fact]
+    public void RenameTabAt_UpdatesName()
+    {
+        var workspace = new WorkspaceModel();
+        workspace.AddTab();
+        Assert.True(workspace.RenameTabAt(0, "  Snips  "));
+        Assert.Equal("Snips", workspace.Tabs[0].Name);
+        Assert.False(workspace.RenameTabAt(0, "   "));
+        Assert.Equal("Snips", workspace.Tabs[0].Name);
+    }
 }

@@ -1,6 +1,5 @@
 ﻿Public Class frmScreenShotter
     Private ReadOnly _workspace As New WorkspaceModel()
-    Private _tabCounter As Integer = 0
 
     Private Sub frmScreenShotter_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         ' Responsive chrome: toolstrip top, status bottom, tabs fill remainder
@@ -86,10 +85,17 @@
         UpdateStatus()
     End Sub
 
+    Private Sub tabControl_MouseDoubleClick(sender As Object, e As MouseEventArgs) Handles tabControl.MouseDoubleClick
+        Dim index = HitTestTabIndex(e.Location)
+        If index >= 0 Then
+            RenameTabAt(index)
+        End If
+    End Sub
+
     Private Sub CreateNewTab()
-        _tabCounter += 1
-        Dim name = $"Tab {_tabCounter}"
-        Dim session = _workspace.AddTab(name)
+        ' Number from current tab count (close Tab 2 → next new tab is Tab 2 again)
+        Dim session = _workspace.AddTab()
+        Dim name = session.Name
 
         Dim page As New TabPage(name) With {
             .UseVisualStyleBackColor = True,
@@ -101,6 +107,38 @@
         page.Controls.Add(canvas)
         tabControl.TabPages.Add(page)
         tabControl.SelectedTab = page
+        UpdateStatus()
+    End Sub
+
+    ''' <summary>
+    ''' Which tab header contains the client point, or -1.
+    ''' </summary>
+    Private Function HitTestTabIndex(clientPoint As Point) As Integer
+        For i = 0 To tabControl.TabCount - 1
+            If tabControl.GetTabRect(i).Contains(clientPoint) Then
+                Return i
+            End If
+        Next
+        Return -1
+    End Function
+
+    Private Sub RenameTabAt(index As Integer)
+        If index < 0 OrElse index >= tabControl.TabPages.Count Then Return
+
+        Dim page = tabControl.TabPages(index)
+        Dim proposed = Interaction.InputBox(
+            "Enter a new name for this tab:",
+            "Rename Tab",
+            page.Text)
+
+        Dim normalized = TabNamingHelper.NormalizeTabName(proposed)
+        If normalized Is Nothing Then
+            ' Cancelled or blank — leave name unchanged
+            Return
+        End If
+
+        page.Text = normalized
+        _workspace.RenameTabAt(index, normalized)
         UpdateStatus()
     End Sub
 

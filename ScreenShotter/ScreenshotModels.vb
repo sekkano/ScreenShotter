@@ -95,11 +95,24 @@ Public Class WorkspaceModel
     End Property
 
     Public Function AddTab(Optional name As String = Nothing) As TabSession
-        Dim tabName = If(String.IsNullOrWhiteSpace(name), $"Tab {_tabs.Count + 1}", name)
+        Dim tabName = If(String.IsNullOrWhiteSpace(name),
+            TabNamingHelper.NextDefaultTabName(_tabs.Count),
+            name.Trim())
         Dim tab As New TabSession(tabName)
         _tabs.Add(tab)
         _activeIndex = _tabs.Count - 1
         Return tab
+    End Function
+
+    ''' <summary>
+    ''' Renames a tab by index. Returns False if index is invalid or name is blank.
+    ''' </summary>
+    Public Function RenameTabAt(index As Integer, newName As String) As Boolean
+        If index < 0 OrElse index >= _tabs.Count Then Return False
+        Dim normalized = TabNamingHelper.NormalizeTabName(newName)
+        If normalized Is Nothing Then Return False
+        _tabs(index).Name = normalized
+        Return True
     End Function
 
     Public Function RemoveTabAt(index As Integer) As Boolean
