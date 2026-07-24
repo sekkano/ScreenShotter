@@ -58,6 +58,24 @@ Public Class MovableScreenshotBox
         End Get
     End Property
 
+    ''' <summary>
+    ''' Source image for this screenshot (owned by the canvas; do not dispose).
+    ''' </summary>
+    Public ReadOnly Property SourceImage As Image
+        Get
+            Return _image
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' Current pan of zoomed content inside the frame.
+    ''' </summary>
+    Public ReadOnly Property ContentPan As Point
+        Get
+            Return _pan
+        End Get
+    End Property
+
     <System.ComponentModel.Browsable(False)>
     <System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)>
     Public Property Zoom As Double
@@ -165,6 +183,46 @@ Public Class MovableScreenshotBox
         Dim content = ZoomHelper.ContentSize(Size, _zoom)
         _pan = ZoomHelper.ClampPan(New Point(_pan.X - dx, _pan.Y), content, Size)
         Invalidate()
+    End Sub
+
+    ''' <summary>
+    ''' Draws this screenshot as currently displayed (zoom/pan/stretch), without selection chrome.
+    ''' Used when exporting the tab composite.
+    ''' </summary>
+    Public Sub DrawContentAsDisplayed(g As Graphics, destFrame As Rectangle)
+        If g Is Nothing OrElse _image Is Nothing Then Return
+        If destFrame.Width <= 0 OrElse destFrame.Height <= 0 Then Return
+
+        Dim state = g.Save()
+        Try
+            g.SetClip(destFrame)
+            g.InterpolationMode = If(_zoom > 1.01,
+                Drawing2D.InterpolationMode.NearestNeighbor,
+                Drawing2D.InterpolationMode.HighQualityBicubic)
+            g.PixelOffsetMode = Drawing2D.PixelOffsetMode.Half
+
+            ' Scale pan/content from current frame size to destFrame size (usually 1:1)
+            Dim scaleX = destFrame.Width / CDbl(Math.Max(1, Width))
+            Dim scaleY = destFrame.Height / CDbl(Math.Max(1, Height))
+            Dim content = ZoomHelper.ContentSize(Size, _zoom)
+            Dim contentW = Math.Max(1, CInt(Math.Round(content.Width * scaleX)))
+            Dim contentH = Math.Max(1, CInt(Math.Round(content.Height * scaleY)))
+            Dim panX = CInt(Math.Round(_pan.X * scaleX))
+            Dim panY = CInt(Math.Round(_pan.Y * scaleY))
+
+            Using bg As New SolidBrush(BackColor)
+                g.FillRectangle(bg, destFrame)
+            End Using
+
+            Dim dest As New Rectangle(
+                destFrame.X + panX,
+                destFrame.Y + panY,
+                contentW,
+                contentH)
+            g.DrawImage(_image, dest)
+        Finally
+            g.Restore(state)
+        End Try
     End Sub
 
     Private Sub SetZoom(value As Double, cursorInViewport As Point, useCursor As Boolean, notify As Boolean)

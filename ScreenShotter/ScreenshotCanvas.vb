@@ -106,6 +106,74 @@ Public Class ScreenshotCanvas
     End Function
 
     ''' <summary>
+    ''' Number of screenshots currently on this tab.
+    ''' </summary>
+    Public ReadOnly Property ScreenshotCount As Integer
+        Get
+            Return _boxes.Count
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' Composites every screenshot on this tab as currently displayed (positions, sizes,
+    ''' zoom/pan, z-order). Caller owns and must dispose the returned bitmap.
+    ''' Returns Nothing when the tab has no screenshots.
+    ''' </summary>
+    Public Function RenderTabComposite() As Bitmap
+        If _boxes.Count = 0 Then Return Nothing
+
+        ' Bottom → top paint order matches WinForms Controls collection
+        Dim ordered = New List(Of MovableScreenshotBox)()
+        For Each ctrl As Control In Controls
+            Dim box = TryCast(ctrl, MovableScreenshotBox)
+            If box IsNot Nothing Then ordered.Add(box)
+        Next
+        If ordered.Count = 0 Then Return Nothing
+
+        Dim frames = ordered.Select(Function(b) b.Bounds).ToList()
+        Dim union = TabExportHelper.ComputeUnionBounds(frames)
+        If union.Width <= 0 OrElse union.Height <= 0 Then Return Nothing
+
+        Dim bmp As New Bitmap(union.Width, union.Height, Imaging.PixelFormat.Format32bppArgb)
+        Using g = Graphics.FromImage(bmp)
+            g.Clear(Color.Transparent)
+            g.CompositingMode = Drawing2D.CompositingMode.SourceOver
+            g.CompositingQuality = Drawing2D.CompositingQuality.HighQuality
+
+            For Each box In ordered
+                Dim dest = TabExportHelper.FrameInExport(union, box.Bounds)
+                box.DrawContentAsDisplayed(g, dest)
+            Next
+        End Using
+        Return bmp
+    End Function
+
+    ''' <summary>
+    ''' Renders the current tab composite and saves it to <paramref name="path"/>.
+    ''' Format is chosen from the file extension (PNG default).
+    ''' </summary>
+    Public Function SaveTabComposite(path As String) As Boolean
+        If Not TabExportHelper.IsValidSavePath(path) Then Return False
+        Using bmp = RenderTabComposite()
+            If bmp Is Nothing Then Return False
+            Dim format = TabExportHelper.FormatFromPath(path)
+            ' JPEG does not support transparency — flatten onto white
+            If format.Equals(Imaging.ImageFormat.Jpeg) Then
+                Using flat As New Bitmap(bmp.Width, bmp.Height, Imaging.PixelFormat.Format24bppRgb)
+                    Using g = Graphics.FromImage(flat)
+                        g.Clear(Color.White)
+                        g.DrawImageUnscaled(bmp, 0, 0)
+                    End Using
+                    flat.Save(path, format)
+                End Using
+            Else
+                bmp.Save(path, format)
+            End If
+        End Using
+        Return True
+    End Function
+
+    ''' <summary>
     ''' Removes a screenshot by id. Disposes the image and control.
     ''' </summary>
     Public Function RemoveScreenshot(id As Guid) As Boolean

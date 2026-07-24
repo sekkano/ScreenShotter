@@ -25,6 +25,8 @@ Partial Class frmScreenShotter
         toolStrip = New ToolStrip()
         btnCapture = New ToolStripButton()
         toolStripSeparator1 = New ToolStripSeparator()
+        btnSave = New ToolStripButton()
+        toolStripSeparatorSave = New ToolStripSeparator()
         btnNewTab = New ToolStripButton()
         btnCloseTab = New ToolStripButton()
         toolStripSeparator2 = New ToolStripSeparator()
@@ -42,7 +44,8 @@ Partial Class frmScreenShotter
         '
         toolStrip.GripStyle = ToolStripGripStyle.Hidden
         toolStrip.Items.AddRange(New ToolStripItem() {
-            btnCapture, toolStripSeparator1, btnNewTab, btnCloseTab,
+            btnCapture, toolStripSeparator1, btnSave, toolStripSeparatorSave,
+            btnNewTab, btnCloseTab,
             toolStripSeparator2, btnZoomOut, btnZoomReset, btnZoomIn})
         toolStrip.Location = New Point(0, 0)
         toolStrip.Name = "toolStrip"
@@ -64,6 +67,19 @@ Partial Class frmScreenShotter
         '
         toolStripSeparator1.Name = "toolStripSeparator1"
         toolStripSeparator1.Size = New Size(6, 26)
+        '
+        'btnSave
+        '
+        btnSave.DisplayStyle = ToolStripItemDisplayStyle.Text
+        btnSave.Name = "btnSave"
+        btnSave.Size = New Size(71, 23)
+        btnSave.Text = "Save Tab"
+        btnSave.ToolTipText = "Save everything on the current tab as an image (Ctrl+S)"
+        '
+        'toolStripSeparatorSave
+        '
+        toolStripSeparatorSave.Name = "toolStripSeparatorSave"
+        toolStripSeparatorSave.Size = New Size(6, 26)
         '
         'btnNewTab
         '
@@ -159,6 +175,8 @@ Partial Class frmScreenShotter
     Friend WithEvents toolStrip As ToolStrip
     Friend WithEvents btnCapture As ToolStripButton
     Friend WithEvents toolStripSeparator1 As ToolStripSeparator
+    Friend WithEvents btnSave As ToolStripButton
+    Friend WithEvents toolStripSeparatorSave As ToolStripSeparator
     Friend WithEvents btnNewTab As ToolStripButton
     Friend WithEvents btnCloseTab As ToolStripButton
     Friend WithEvents toolStripSeparator2 As ToolStripSeparator
