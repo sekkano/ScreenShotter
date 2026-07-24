@@ -1,0 +1,61 @@
+## Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Ll]og/
+[Ll]ogs/
+
+## Visual Studio
+.vs/
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.rsuser
+*.sln.docstates
+
+## NuGet
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Test / coverage
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+
+## OS / tooling
+Thumbs.db
+Desktop.ini
+*~
+.DS_Store
+*.swp
+*.tmp
+*.log
+
+## Publish / installers
+[Pp]ublish/
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+
+## Rider / VS Code (local)
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
