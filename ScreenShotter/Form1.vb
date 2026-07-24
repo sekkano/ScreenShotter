@@ -7,10 +7,27 @@
         toolStrip.Dock = DockStyle.Top
         statusStrip.Dock = DockStyle.Bottom
         tabControl.Dock = DockStyle.Fill
+        KeyPreview = True
 
         CreateNewTab()
         UpdateStatus()
     End Sub
+
+    ''' <summary>
+    ''' Delete / Backspace removes the selected screenshot on the active tab.
+    ''' </summary>
+    Protected Overrides Function ProcessCmdKey(ByRef msg As Message, keyData As Keys) As Boolean
+        If keyData = Keys.Delete OrElse keyData = Keys.Back Then
+            Dim canvas = GetActiveCanvas()
+            If canvas IsNot Nothing AndAlso canvas.SelectedBox IsNot Nothing Then
+                If canvas.RemoveSelectedScreenshot() Then
+                    UpdateStatus()
+                    Return True
+                End If
+            End If
+        End If
+        Return MyBase.ProcessCmdKey(msg, keyData)
+    End Function
 
     Private Sub btnCapture_Click(sender As Object, e As EventArgs) Handles btnCapture.Click
         StartCapture()
@@ -170,11 +187,11 @@
             Dim zoomTxt = ZoomHelper.FormatZoomPercent(box.Zoom)
             statusLabel.Text =
                 $"{tabName}: {count} · {nat.Width}×{nat.Height} native · frame {box.Width}×{box.Height} · zoom {zoomTxt} — " &
-                "move body · edge stretch · corner aspect · Ctrl+wheel/± zoom · wheel scrolls · Shift/middle pan · double-click 100%"
+                "move · resize · Ctrl+wheel zoom · Del deletes · double-click 100%"
             btnZoomReset.Text = zoomTxt
         Else
             statusLabel.Text =
-                $"{tabName}: {count} screenshot(s) — New Screenshot · select one to zoom/resize"
+                $"{tabName}: {count} screenshot(s) — New Screenshot · select one · Del to delete"
             btnZoomReset.Text = "100%"
         End If
     End Sub

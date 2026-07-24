@@ -97,4 +97,18 @@ public class WorkspaceModelTests
         Assert.True(a.Location.Y < b.Location.Y + b.Size.Height);
         Assert.NotEqual(a.Id, b.Id);
     }
+
+    [Fact]
+    public void RemoveScreenshot_DeletesOnlyThatItem()
+    {
+        var tab = new TabSession("T");
+        var keep = tab.AddScreenshot(new Point(0, 0), new Size(10, 10));
+        var drop = tab.AddScreenshot(new Point(5, 5), new Size(20, 20));
+
+        Assert.True(tab.RemoveScreenshot(drop.Id));
+        Assert.Single(tab.Items);
+        Assert.Equal(keep.Id, tab.Items[0].Id);
+        Assert.False(tab.RemoveScreenshot(drop.Id)); // already gone
+        Assert.False(tab.RemoveScreenshot(Guid.NewGuid()));
+    }
 }

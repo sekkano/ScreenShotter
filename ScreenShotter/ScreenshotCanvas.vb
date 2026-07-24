@@ -96,6 +96,59 @@ Public Class ScreenshotCanvas
         SelectedBox?.ZoomReset()
     End Sub
 
+    ''' <summary>
+    ''' Removes the currently selected screenshot from this tab (model + UI + image).
+    ''' Returns True if something was deleted.
+    ''' </summary>
+    Public Function RemoveSelectedScreenshot() As Boolean
+        If _selectedId = Guid.Empty Then Return False
+        Return RemoveScreenshot(_selectedId)
+    End Function
+
+    ''' <summary>
+    ''' Removes a screenshot by id. Disposes the image and control.
+    ''' </summary>
+    Public Function RemoveScreenshot(id As Guid) As Boolean
+        If id = Guid.Empty Then Return False
+
+        Dim box As MovableScreenshotBox = Nothing
+        If Not _boxes.TryGetValue(id, box) Then
+            ' Still try model cleanup
+            Return _session.RemoveScreenshot(id)
+        End If
+
+        RemoveHandler box.PositionChanged, AddressOf OnBoxPositionChanged
+        RemoveHandler box.TransformChanged, AddressOf OnBoxTransformChanged
+        RemoveHandler box.SelectedChanged, AddressOf OnBoxSelectedChanged
+        RemoveHandler box.InteractionEnded, AddressOf OnBoxInteractionEnded
+
+        _boxes.Remove(id)
+        Controls.Remove(box)
+        box.Dispose()
+
+        Dim img As Image = Nothing
+        If _images.TryGetValue(id, img) Then
+            _images.Remove(id)
+            img.Dispose()
+        End If
+
+        _session.RemoveScreenshot(id)
+
+        If _selectedId = id Then
+            _selectedId = Guid.Empty
+            ' Select another remaining screenshot if any (top-most / last in z-order preferred)
+            Dim nextBox = _boxes.Values.LastOrDefault()
+            If nextBox IsNot Nothing Then
+                SelectBox(nextBox)
+            Else
+                RaiseEvent SelectionChanged(Me, EventArgs.Empty)
+            End If
+        End If
+
+        UpdateScrollBounds()
+        Return True
+    End Function
+
     Private Function ComputeCascadeLocation() As Point
         Const offset = 24
         Dim n = _session.Items.Count
@@ -160,6 +213,7 @@ Public Class ScreenshotCanvas
             kvp.Value.Selected = (kvp.Key = _selectedId)
         Next
         box.BringToFront()
+        If box.CanFocus Then box.Focus()
         RaiseEvent SelectionChanged(Me, EventArgs.Empty)
     End Sub
 
@@ -169,6 +223,22 @@ Public Class ScreenshotCanvas
             Focus()
         End If
     End Sub
+
+    Protected Overrides Sub OnKeyDown(e As KeyEventArgs)
+        MyBase.OnKeyDown(e)
+        If e.KeyCode = Keys.Delete OrElse e.KeyCode = Keys.Back Then
+            If RemoveSelectedScreenshot() Then
+                e.Handled = True
+                e.SuppressKeyPress = True
+            End If
+        End If
+    End Sub
+
+    Protected Overrides Function IsInputKey(keyData As Keys) As Boolean
+        Dim key = keyData And Not Keys.Modifiers
+        If key = Keys.Delete OrElse key = Keys.Back Then Return True
+        Return MyBase.IsInputKey(keyData)
+    End Function
 
     ''' <summary>
     ''' Plain wheel scrolls the canvas. Ctrl+wheel over a screenshot zooms that image.

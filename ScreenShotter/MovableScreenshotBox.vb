@@ -444,6 +444,23 @@ Public Class MovableScreenshotBox
         ZoomReset()
     End Sub
 
+    Protected Overrides Function IsInputKey(keyData As Keys) As Boolean
+        Dim key = keyData And Not Keys.Modifiers
+        If key = Keys.Delete OrElse key = Keys.Back Then Return True
+        Return MyBase.IsInputKey(keyData)
+    End Function
+
+    Protected Overrides Sub OnKeyDown(e As KeyEventArgs)
+        MyBase.OnKeyDown(e)
+        If e.KeyCode = Keys.Delete OrElse e.KeyCode = Keys.Back Then
+            Dim canvas = TryCast(Parent, ScreenshotCanvas)
+            If canvas IsNot Nothing AndAlso canvas.RemoveSelectedScreenshot() Then
+                e.Handled = True
+                e.SuppressKeyPress = True
+            End If
+        End If
+    End Sub
+
     Protected Overrides Sub OnResize(e As EventArgs)
         MyBase.OnResize(e)
         Dim content = ZoomHelper.ContentSize(Size, _zoom)

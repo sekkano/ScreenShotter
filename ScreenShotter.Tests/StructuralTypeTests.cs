@@ -36,6 +36,9 @@ public class StructuralTypeTests
         Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("ZoomSelectedIn"));
         Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("ZoomSelectedOut"));
         Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("ZoomSelectedReset"));
+        Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("RemoveSelectedScreenshot"));
+        Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("RemoveScreenshot", new[] { typeof(Guid) }));
+        Assert.NotNull(typeof(TabSession).GetMethod("RemoveScreenshot", new[] { typeof(Guid) }));
         Assert.True(typeof(MovableScreenshotBox).IsSubclassOf(typeof(Control)));
         Assert.NotNull(typeof(MovableScreenshotBox).GetEvent("PositionChanged"));
         Assert.NotNull(typeof(MovableScreenshotBox).GetEvent("TransformChanged"));
