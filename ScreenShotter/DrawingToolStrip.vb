@@ -17,7 +17,7 @@ Public Class DrawingToolStrip
     Public Event SettingsChanged As EventHandler
 
     Private Shared ReadOnly OpacityChoices As Integer() = {20, 30, 40, 50, 60, 70, 80, 90, 100}
-    Private Shared ReadOnly ThicknessChoices As Single() = {8, 12, 16, 20, 28, 36, 48, 64}
+    Private Shared ReadOnly ThicknessChoices As Single() = {2, 4, 8, 12, 16, 20, 28, 36, 48, 64}
 
     Public Sub New()
         MyBase.New()

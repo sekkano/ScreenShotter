@@ -117,17 +117,41 @@ End Class
 ''' Default appearance for an ink tool.
 ''' </summary>
 Public Structure DrawingToolPreset
+    Private ReadOnly _tool As DrawingTool
+    Private ReadOnly _baseColor As Color
+    Private ReadOnly _opacityPercent As Integer
+    Private ReadOnly _thickness As Single
+
     Public Sub New(tool As DrawingTool, baseColor As Color, opacityPercent As Integer, thickness As Single)
-        Me.Tool = tool
-        Me.BaseColor = baseColor
-        Me.OpacityPercent = opacityPercent
-        Me.Thickness = thickness
+        _tool = tool
+        _baseColor = baseColor
+        _opacityPercent = opacityPercent
+        _thickness = thickness
     End Sub
 
     Public ReadOnly Property Tool As DrawingTool
+        Get
+            Return _tool
+        End Get
+    End Property
+
     Public ReadOnly Property BaseColor As Color
+        Get
+            Return _baseColor
+        End Get
+    End Property
+
     Public ReadOnly Property OpacityPercent As Integer
+        Get
+            Return _opacityPercent
+        End Get
+    End Property
+
     Public ReadOnly Property Thickness As Single
+        Get
+            Return _thickness
+        End Get
+    End Property
 End Structure
 
 ''' <summary>
