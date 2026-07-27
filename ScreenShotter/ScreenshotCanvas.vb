@@ -1,5 +1,7 @@
 ''' <summary>
-''' Per-tab canvas hosting movable/resizable/zoomable screenshots at full native frame size.
+''' Per-tab canvas hosting movable/resizable/zoomable screenshots.
+''' Uses an inner surface panel so AutoScroll does not fight child Location
+''' (avoids screenshots jumping when selecting/focusing).
 ''' </summary>
 Public Class ScreenshotCanvas
     Inherits Panel
@@ -7,6 +9,7 @@ Public Class ScreenshotCanvas
     Private ReadOnly _session As TabSession
     Private ReadOnly _images As New Dictionary(Of Guid, Image)()
     Private ReadOnly _boxes As New Dictionary(Of Guid, MovableScreenshotBox)()
+    Private ReadOnly _surface As Panel
     Private _selectedId As Guid = Guid.Empty
     Private _scrollUpdatePending As Boolean
     Private _activeTool As DrawingTool = DrawingTool.Pointer
@@ -19,7 +22,6 @@ Public Class ScreenshotCanvas
         BackColor = Color.FromArgb(245, 245, 248)
         BorderStyle = BorderStyle.None
 
-        ' Strong double-buffering to reduce ghost trails while dragging children
         SetStyle(ControlStyles.AllPaintingInWmPaint Or
                  ControlStyles.OptimizedDoubleBuffer Or
                  ControlStyles.UserPaint Or
@@ -27,11 +29,26 @@ Public Class ScreenshotCanvas
                  ControlStyles.Selectable, True)
         UpdateStyles()
         DoubleBuffered = True
+
+        ' Inner surface: children use simple (0,0) coordinates; this panel is the
+        ' only AutoScroll child so focusing a screenshot does not re-home locations.
+        _surface = New Panel() With {
+            .Location = Point.Empty,
+            .Size = New Size(1, 1),
+            .BackColor = Color.FromArgb(245, 245, 248),
+            .Margin = Padding.Empty,
+            .Padding = Padding.Empty
+        }
+        Controls.Add(_surface)
     End Sub
 
-    ''' <summary>
-    ''' Current tool for this tab (Pointer = move/resize; Highlighter/Pen = ink).
-    ''' </summary>
+    ''' <summary>Host for screenshot controls (document coordinate space).</summary>
+    Public ReadOnly Property Surface As Panel
+        Get
+            Return _surface
+        End Get
+    End Property
+
     <System.ComponentModel.Browsable(False)>
     <System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)>
     Public Property ActiveTool As DrawingTool
@@ -50,9 +67,6 @@ Public Class ScreenshotCanvas
         End Set
     End Property
 
-    ''' <summary>
-    ''' Color, opacity, and thickness for new strokes on this tab.
-    ''' </summary>
     <System.ComponentModel.Browsable(False)>
     <System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)>
     Public ReadOnly Property DrawingSettings As DrawingSettings
@@ -61,9 +75,6 @@ Public Class ScreenshotCanvas
         End Get
     End Property
 
-    ''' <summary>
-    ''' Applies toolbar settings (tool + ink appearance) to this canvas.
-    ''' </summary>
     Public Sub ApplyDrawingSettings(tool As DrawingTool, settings As DrawingSettings)
         If settings IsNot Nothing Then
             _drawingSettings.Tool = settings.Tool
@@ -74,19 +85,8 @@ Public Class ScreenshotCanvas
         ActiveTool = tool
     End Sub
 
-    Protected Overrides ReadOnly Property CreateParams As CreateParams
-        Get
-            Dim cp = MyBase.CreateParams
-            ' WS_EX_COMPOSITED — paint children as a unit; reduces drag ghost trails
-            cp.ExStyle = cp.ExStyle Or &H2000000
-            Return cp
-        End Get
-    End Property
-
     ''' <summary>
-    ''' Prevent AutoScroll from jumping when a screenshot is focused/selected.
-    ''' Default WinForms behavior scrolls the focused child into view, which looks
-    ''' like other screenshots "teleport" without the user dragging them.
+    ''' Never auto-scroll when a child is focused — that jumps the viewport.
     ''' </summary>
     Protected Overrides Function ScrollToControl(activeControl As Control) As Point
         Return DisplayRectangle.Location
@@ -110,9 +110,6 @@ Public Class ScreenshotCanvas
     Public Event SelectionChanged As EventHandler
     Public Event TransformChanged As EventHandler(Of TransformChangedEventArgs)
 
-    ''' <summary>
-    ''' Adds a screenshot at full native pixel frame size (zoom 100% inside). Takes ownership of image.
-    ''' </summary>
     Public Function AddScreenshotImage(image As Image, Optional location As Point? = Nothing) As ScreenshotItem
         If image Is Nothing Then Throw New ArgumentNullException(NameOf(image))
 
@@ -131,9 +128,9 @@ Public Class ScreenshotCanvas
         AddHandler box.InteractionEnded, AddressOf OnBoxInteractionEnded
 
         _boxes(item.Id) = box
-        SuspendLayout()
-        Controls.Add(box)
-        ResumeLayout(False)
+        _surface.SuspendLayout()
+        _surface.Controls.Add(box)
+        _surface.ResumeLayout(False)
         box.BringToFront()
         SelectBox(box)
         UpdateScrollBounds()
@@ -152,37 +149,23 @@ Public Class ScreenshotCanvas
         SelectedBox?.ZoomReset()
     End Sub
 
-    ''' <summary>
-    ''' Removes the currently selected screenshot from this tab (model + UI + image).
-    ''' Returns True if something was deleted.
-    ''' </summary>
     Public Function RemoveSelectedScreenshot() As Boolean
         If _selectedId = Guid.Empty Then Return False
         Return RemoveScreenshot(_selectedId)
     End Function
 
-    ''' <summary>
-    ''' Number of screenshots currently on this tab.
-    ''' </summary>
     Public ReadOnly Property ScreenshotCount As Integer
         Get
             Return _boxes.Count
         End Get
     End Property
 
-    ''' <summary>
-    ''' Composites every screenshot on this tab as currently displayed (positions, sizes,
-    ''' zoom/pan, z-order). Caller owns and must dispose the returned bitmap.
-    ''' Returns Nothing when the tab has no screenshots.
-    ''' </summary>
     Public Function RenderTabComposite() As Bitmap
         If _boxes.Count = 0 Then Return Nothing
 
-        ' WinForms: Controls(0) is front/top. Paint back→front so the top-most
-        ' screenshot is drawn last and stays on top in the export (matches the app).
         Dim ordered = New List(Of MovableScreenshotBox)()
-        For Each idx In TabExportHelper.BottomToTopControlIndices(Controls.Count)
-            Dim box = TryCast(Controls(idx), MovableScreenshotBox)
+        For Each idx In TabExportHelper.BottomToTopControlIndices(_surface.Controls.Count)
+            Dim box = TryCast(_surface.Controls(idx), MovableScreenshotBox)
             If box IsNot Nothing Then ordered.Add(box)
         Next
         If ordered.Count = 0 Then Return Nothing
@@ -205,16 +188,11 @@ Public Class ScreenshotCanvas
         Return bmp
     End Function
 
-    ''' <summary>
-    ''' Renders the current tab composite and saves it to <paramref name="path"/>.
-    ''' Format is chosen from the file extension (PNG default).
-    ''' </summary>
     Public Function SaveTabComposite(path As String) As Boolean
         If Not TabExportHelper.IsValidSavePath(path) Then Return False
         Using bmp = RenderTabComposite()
             If bmp Is Nothing Then Return False
             Dim format = TabExportHelper.FormatFromPath(path)
-            ' JPEG does not support transparency — flatten onto white
             If format.Equals(Imaging.ImageFormat.Jpeg) Then
                 Using flat As New Bitmap(bmp.Width, bmp.Height, Imaging.PixelFormat.Format24bppRgb)
                     Using g = Graphics.FromImage(flat)
@@ -230,15 +208,11 @@ Public Class ScreenshotCanvas
         Return True
     End Function
 
-    ''' <summary>
-    ''' Removes a screenshot by id. Disposes the image and control.
-    ''' </summary>
     Public Function RemoveScreenshot(id As Guid) As Boolean
         If id = Guid.Empty Then Return False
 
         Dim box As MovableScreenshotBox = Nothing
         If Not _boxes.TryGetValue(id, box) Then
-            ' Still try model cleanup
             Return _session.RemoveScreenshot(id)
         End If
 
@@ -248,7 +222,7 @@ Public Class ScreenshotCanvas
         RemoveHandler box.InteractionEnded, AddressOf OnBoxInteractionEnded
 
         _boxes.Remove(id)
-        Controls.Remove(box)
+        _surface.Controls.Remove(box)
         box.Dispose()
 
         Dim img As Image = Nothing
@@ -261,7 +235,6 @@ Public Class ScreenshotCanvas
 
         If _selectedId = id Then
             _selectedId = Guid.Empty
-            ' Select another remaining screenshot if any (top-most / last in z-order preferred)
             Dim nextBox = _boxes.Values.LastOrDefault()
             If nextBox IsNot Nothing Then
                 SelectBox(nextBox)
@@ -274,13 +247,8 @@ Public Class ScreenshotCanvas
         Return True
     End Function
 
-    ''' <summary>
-    ''' Places a new screenshot to the right of the previous one, or on a new row below.
-    ''' </summary>
     Private Function ComputeNextPlacement(newSize As Size) As Point
-        Dim origin = New Point(-AutoScrollPosition.X, -AutoScrollPosition.Y)
         Dim frames As New List(Of Rectangle)()
-        ' Use live control bounds (current size/position), in add order via session when possible
         For Each item In _session.Items
             Dim box As MovableScreenshotBox = Nothing
             If _boxes.TryGetValue(item.Id, box) Then
@@ -289,12 +257,11 @@ Public Class ScreenshotCanvas
                 frames.Add(New Rectangle(item.Location, item.Size))
             End If
         Next
-        Return ScreenshotLayoutHelper.PlaceNextScreenshot(frames, newSize, origin)
+        Return ScreenshotLayoutHelper.PlaceNextScreenshot(frames, newSize, Point.Empty)
     End Function
 
     Private Sub OnBoxPositionChanged(sender As Object, e As PositionChangedEventArgs)
         _session.MoveScreenshot(e.ItemId, e.Location)
-        ' Heavy scroll-size work only when not mid-drag (InteractionEnded handles that)
         Dim box = TryCast(sender, MovableScreenshotBox)
         If box Is Nothing OrElse Not box.IsInteracting Then
             UpdateScrollBounds()
@@ -326,7 +293,6 @@ Public Class ScreenshotCanvas
 
     Private Sub OnBoxInteractionEnded(sender As Object, e As EventArgs)
         _scrollUpdatePending = False
-        ' Sync model location/size after deferred move/resize
         Dim box = TryCast(sender, MovableScreenshotBox)
         If box IsNot Nothing Then
             _session.MoveScreenshot(box.ItemId, box.Location)
@@ -339,10 +305,6 @@ Public Class ScreenshotCanvas
         UpdateScrollBounds()
     End Sub
 
-    ''' <summary>
-    ''' Stops move/resize/draw on every screenshot except <paramref name="except"/>,
-    ''' so mouse capture cannot stick on a previous control.
-    ''' </summary>
     Public Sub CancelInteractionsExcept(except As MovableScreenshotBox)
         For Each box In _boxes.Values
             If except Is Nothing OrElse Not Object.ReferenceEquals(box, except) Then
@@ -355,24 +317,32 @@ Public Class ScreenshotCanvas
 
     Private Sub SelectBox(box As MovableScreenshotBox)
         If box Is Nothing Then Return
-        ' Selecting a different box must not leave another one mid-drag
         CancelInteractionsExcept(box)
         _selectedId = box.ItemId
         For Each kvp In _boxes
             kvp.Value.Selected = (kvp.Key = _selectedId)
         Next
         box.BringToFront()
-        ' Do not Focus() here — focusing a child makes AutoScroll jump the viewport.
-        ' Delete/Backspace are handled by the main form via SelectedBox.
+        ' Never Focus a screenshot — that triggers scroll-into-view jumps.
         RaiseEvent SelectionChanged(Me, EventArgs.Empty)
     End Sub
 
     Protected Overrides Sub OnMouseDown(e As MouseEventArgs)
         MyBase.OnMouseDown(e)
         If e.Button = MouseButtons.Left Then
-            ' Focus the canvas (not a child) so keyboard works without scroll-into-view
             Focus()
+            CancelInteractionsExcept(Nothing)
         End If
+    End Sub
+
+    Protected Overrides Sub OnMouseUp(e As MouseEventArgs)
+        MyBase.OnMouseUp(e)
+        ' Clear select-pending on any box if mouse released outside it (no Capture yet)
+        For Each box In _boxes.Values
+            If box.IsInteracting Then
+                box.NotifyGlobalMouseUp()
+            End If
+        Next
     End Sub
 
     Protected Overrides Sub OnKeyDown(e As KeyEventArgs)
@@ -391,10 +361,6 @@ Public Class ScreenshotCanvas
         Return MyBase.IsInputKey(keyData)
     End Function
 
-    ''' <summary>
-    ''' Plain wheel scrolls the canvas. Ctrl+wheel over a screenshot zooms that image.
-    ''' Shift+wheel scrolls horizontally.
-    ''' </summary>
     Protected Overrides Sub OnMouseWheel(e As MouseEventArgs)
         Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
         Dim box = If(ctrl, GetScreenshotUnderPointer(), Nothing)
@@ -416,9 +382,6 @@ Public Class ScreenshotCanvas
         MyBase.OnMouseWheel(e)
     End Sub
 
-    ''' <summary>
-    ''' Side-tilt wheel → horizontal AutoScroll. Ctrl+vertical over image is handled above.
-    ''' </summary>
     Protected Overrides Sub WndProc(ByRef m As Message)
         Const WM_MOUSEWHEEL As Integer = &H20A
         Const WM_MOUSEHWHEEL As Integer = &H20E
@@ -434,7 +397,6 @@ Public Class ScreenshotCanvas
                     Return
                 End If
             End If
-            ' Plain wheel: default AutoScroll vertical behavior
         End If
 
         If m.Msg = WM_MOUSEHWHEEL Then
@@ -458,13 +420,8 @@ Public Class ScreenshotCanvas
         MyBase.WndProc(m)
     End Sub
 
-    ''' <summary>
-    ''' Scroll this canvas from a wheel delta (used when the pointer is over an image
-    ''' but Ctrl is not held, so zoom should not happen).
-    ''' </summary>
     Public Sub ScrollFromWheel(wheelDelta As Integer, horizontal As Boolean)
         Dim pixels = WheelScrollHelper.DeltaToScrollPixels(wheelDelta)
-        ' Vertical wheel: positive delta = scroll up (decrease offset) — match WinForms AutoScroll
         If horizontal Then
             ApplyCanvasScroll(pixels, 0)
         Else
@@ -473,15 +430,9 @@ Public Class ScreenshotCanvas
     End Sub
 
     Private Function GetScreenshotUnderPointer() As MovableScreenshotBox
-        Dim under = GetChildAtPoint(PointToClient(Cursor.Position), GetChildAtPointSkip.Invisible)
-        Dim c = under
-        While c IsNot Nothing
-            Dim box = TryCast(c, MovableScreenshotBox)
-            If box IsNot Nothing Then Return box
-            c = c.Parent
-            If c Is Me Then Exit While
-        End While
-        Return Nothing
+        Dim pt = _surface.PointToClient(Cursor.Position)
+        Dim under = _surface.GetChildAtPoint(pt, GetChildAtPointSkip.Invisible)
+        Return TryCast(under, MovableScreenshotBox)
     End Function
 
     Private Sub ApplyCanvasScroll(deltaXPixels As Integer, deltaYPixels As Integer)
@@ -493,7 +444,6 @@ Public Class ScreenshotCanvas
     Public Sub UpdateScrollBounds()
         Dim frames As New List(Of Rectangle)(_boxes.Count)
         For Each box In _boxes.Values
-            ' Ensure nothing sits in negative document space (unreachable by AutoScroll)
             Dim clamped = CanvasCoordinateHelper.ClampDocumentLocation(box.Location, box.Size)
             If clamped <> box.Location Then
                 box.Location = clamped
@@ -502,6 +452,13 @@ Public Class ScreenshotCanvas
         Next
 
         Dim need = CanvasCoordinateHelper.ComputeScrollMinSize(frames, ClientSize, pad:=120)
+        If need.Width < 1 Then need = New Size(1, 1)
+        If need.Height < 1 Then need = New Size(need.Width, 1)
+
+        ' Grow the surface; AutoScroll uses the surface as its scrollable child.
+        If _surface.Size <> need Then
+            _surface.Size = need
+        End If
         If AutoScrollMinSize <> need Then
             AutoScrollMinSize = need
         End If

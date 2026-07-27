@@ -133,20 +133,32 @@ Public Class MovableScreenshotBox
     ''' </summary>
     Public Sub CancelInteraction()
         If _mode = InteractMode.None AndAlso Not _pendingMove Then Return
+        Dim wasMoveOrResize = (_mode = InteractMode.Move OrElse _mode = InteractMode.Resize)
         _pendingMove = False
         If Capture Then Capture = False
-        Dim wasMoveOrResize = (_mode = InteractMode.Move OrElse _mode = InteractMode.Resize)
         _mode = InteractMode.None
         _resizeEdge = ResizeEdge.None
         _activeStroke = Nothing
         _drawLockHorizontal = False
         Cursor = CursorForIdle(PointToClient(Cursor.Position))
         If wasMoveOrResize Then
-            ' Snap into scrollable space
             Dim clamped = CanvasCoordinateHelper.ClampDocumentLocation(Location, Size)
             If clamped <> Location Then Location = clamped
+            RaiseEvent InteractionEnded(Me, EventArgs.Empty)
         End If
-        RaiseEvent InteractionEnded(Me, EventArgs.Empty)
+    End Sub
+
+    ''' <summary>
+    ''' Called when mouse is released anywhere on the canvas — finishes a select-click
+    ''' that never became a drag (no Capture was taken).
+    ''' </summary>
+    Public Sub NotifyGlobalMouseUp()
+        If _pendingMove AndAlso _mode = InteractMode.None Then
+            _pendingMove = False
+            Cursor = CursorForIdle(PointToClient(Cursor.Position))
+        ElseIf _mode <> InteractMode.None Then
+            EndInteract()
+        End If
     End Sub
 
     Public Sub New(itemId As Guid, image As Image, canvas As ScreenshotCanvas)
@@ -493,8 +505,9 @@ Public Class MovableScreenshotBox
         _pendingMoveLocal = local
         _pendingMoveScreen = PointToScreen(local)
         _mode = InteractMode.None
-        Capture = True
-        ' Keep normal idle cursor until drag threshold is crossed (click ≠ move)
+        ' Do NOT capture yet — capture steals later clicks and teleports this control
+        ' when the pointer moves toward another screenshot.
+        Capture = False
         Cursor = CursorForIdle(local)
     End Sub
 
@@ -507,19 +520,14 @@ Public Class MovableScreenshotBox
     End Sub
 
     ''' <summary>
-    ''' Screen point → document location of the top-left of this control under the cursor.
-    ''' Accounts for AutoScroll so moves stay stable when the canvas is scrolled.
+    ''' Screen point → location of this control's top-left on its parent surface.
+    ''' Parent is a non-AutoScroll surface, so PointToClient is sufficient.
     ''' </summary>
-    Private Function DocumentLocationFromScreen(screenCursor As Point, dragOffsetLocal As Point) As Point
-        Dim parentCtrl = TryCast(Parent, ScrollableControl)
-        If parentCtrl Is Nothing Then
-            Dim p = If(Parent, Me)
-            Dim client = p.PointToClient(screenCursor)
-            Return New Point(client.X - dragOffsetLocal.X, client.Y - dragOffsetLocal.Y)
-        End If
+    Private Function ParentLocationFromScreen(screenCursor As Point, dragOffsetLocal As Point) As Point
+        Dim parentCtrl = Parent
+        If parentCtrl Is Nothing Then Return Location
         Dim clientPt = parentCtrl.PointToClient(screenCursor)
-        Dim doc = CanvasCoordinateHelper.ClientToDocument(clientPt, parentCtrl.AutoScrollPosition)
-        Return New Point(doc.X - dragOffsetLocal.X, doc.Y - dragOffsetLocal.Y)
+        Return New Point(clientPt.X - dragOffsetLocal.X, clientPt.Y - dragOffsetLocal.Y)
     End Function
 
     Private Sub BeginDraw(local As Point, Optional lockHorizontal As Boolean = False)
@@ -582,12 +590,18 @@ Public Class MovableScreenshotBox
         MyBase.OnMouseMove(e)
 
         If _pendingMove Then
-            Dim screenCursor = PointToScreen(e.Location)
+            ' Use Cursor.Position (screen) so we never interpret out-of-bounds e.Location
+            Dim screenCursor = Cursor.Position
             Dim dx = screenCursor.X - _pendingMoveScreen.X
             Dim dy = screenCursor.Y - _pendingMoveScreen.Y
+            If (Control.MouseButtons And MouseButtons.Left) <> MouseButtons.Left Then
+                ' Button released elsewhere — abandon pending move (select only)
+                _pendingMove = False
+                Return
+            End If
             If dx * dx + dy * dy >= MoveDragThresholdPx * MoveDragThresholdPx Then
                 BeginMove(_pendingMoveLocal)
-                ' Fall through into Move handling with this same event
+                ' Fall through into Move handling
             Else
                 Return
             End If
@@ -598,7 +612,7 @@ Public Class MovableScreenshotBox
             Return
         End If
 
-        Dim screenPt = PointToScreen(e.Location)
+        Dim screenPt = Cursor.Position
 
         If _mode = InteractMode.Draw Then
             If (Control.ModifierKeys And Keys.Shift) = Keys.Shift Then
@@ -614,7 +628,7 @@ Public Class MovableScreenshotBox
 
         If _mode = InteractMode.Move Then
             Cursor = Cursors.SizeAll
-            Dim newLoc = DocumentLocationFromScreen(screenPt, _dragOffset)
+            Dim newLoc = ParentLocationFromScreen(screenPt, _dragOffset)
             newLoc = CanvasCoordinateHelper.ClampDocumentLocation(newLoc, Size)
             If newLoc <> Location Then
                 SetBounds(newLoc.X, newLoc.Y, Width, Height, BoundsSpecified.Location)
@@ -678,10 +692,19 @@ Public Class MovableScreenshotBox
         EndInteract()
     End Sub
 
+    Protected Overrides Sub OnMouseLeave(e As EventArgs)
+        MyBase.OnMouseLeave(e)
+        ' Pending select-click: leaving the control without starting a drag = cancel pending
+        If _pendingMove AndAlso _mode = InteractMode.None AndAlso
+           (Control.MouseButtons And MouseButtons.Left) <> MouseButtons.Left Then
+            _pendingMove = False
+        End If
+    End Sub
+
     Protected Overrides Sub OnMouseCaptureChanged(e As EventArgs)
         MyBase.OnMouseCaptureChanged(e)
-        ' If capture is lost (click elsewhere, alt-tab, etc.), stop stuck drags
-        If Not Capture AndAlso (_mode <> InteractMode.None OrElse _pendingMove) AndAlso Not _endingInteract Then
+        ' If capture is lost mid-drag, stop stuck moves/resizes (not pending-only select)
+        If Not Capture AndAlso _mode <> InteractMode.None AndAlso Not _endingInteract Then
             EndInteract()
         End If
     End Sub
