@@ -332,63 +332,76 @@ Public Class MovableScreenshotBox
         If stroke Is Nothing OrElse stroke.Points.Count = 0 Then Return
 
         Dim content = ZoomHelper.ContentSize(Size, _zoom)
-        Dim panX = CInt(Math.Round(_pan.X * scaleX))
-        Dim panY = CInt(Math.Round(_pan.Y * scaleY))
+        Dim panX = CSng(_pan.X * scaleX)
+        Dim panY = CSng(_pan.Y * scaleY)
         Dim contentW = Math.Max(1.0F, CSng(content.Width * scaleX))
         Dim contentH = Math.Max(1.0F, CSng(content.Height * scaleY))
-        Dim width = DrawingHelper.ViewportStrokeWidth(stroke.NativeWidth, Size, _naturalSize, _zoom) *
-            CSng((scaleX + scaleY) / 2.0)
+        Dim width = Math.Max(1.0F,
+            DrawingHelper.ViewportStrokeWidth(stroke.NativeWidth, Size, _naturalSize, _zoom) *
+            CSng((scaleX + scaleY) / 2.0))
+
+        Dim pts = BuildViewportPoints(stroke, destFrame, panX, panY, contentW, contentH)
+        If pts.Length = 0 Then Return
 
         Dim prevMode = g.CompositingMode
-        Dim prevQuality = g.CompositingQuality
+        Dim prevSmooth = g.SmoothingMode
+        Dim prevPixel = g.PixelOffsetMode
         Try
-            If stroke.Tool = DrawingTool.Highlighter Then
-                ' Additive soft mark — stacks translucently
-                g.CompositingMode = Drawing2D.CompositingMode.SourceOver
-                g.CompositingQuality = Drawing2D.CompositingQuality.HighQuality
-            Else
-                ' Pen: solid ink on top
-                g.CompositingMode = Drawing2D.CompositingMode.SourceOver
-                g.CompositingQuality = Drawing2D.CompositingQuality.HighSpeed
-            End If
+            g.CompositingMode = Drawing2D.CompositingMode.SourceOver
+            g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
+            g.PixelOffsetMode = Drawing2D.PixelOffsetMode.HighQuality
 
-            Using pen As New Pen(stroke.Color, Math.Max(1.0F, width))
-                If stroke.Tool = DrawingTool.Pen Then
-                    pen.StartCap = Drawing2D.LineCap.Round
-                    pen.EndCap = Drawing2D.LineCap.Round
-                    pen.LineJoin = Drawing2D.LineJoin.Round
-                Else
-                    ' Highlighter: flatter, wider felt-tip look
-                    pen.StartCap = Drawing2D.LineCap.Flat
-                    pen.EndCap = Drawing2D.LineCap.Flat
-                    pen.LineJoin = Drawing2D.LineJoin.Round
-                End If
+            ' Always round caps so highlighter start/stop is flush (flat caps look chiseled/offset)
+            Using pen As New Pen(stroke.Color, width)
+                pen.StartCap = Drawing2D.LineCap.Round
+                pen.EndCap = Drawing2D.LineCap.Round
+                pen.LineJoin = Drawing2D.LineJoin.Round
+                pen.MiterLimit = 2.0F
 
-                If stroke.Points.Count = 1 Then
-                    Dim p = stroke.Points(0)
-                    Dim pt = New PointF(
-                        destFrame.X + panX + p.X * contentW,
-                        destFrame.Y + panY + p.Y * contentH)
-                    Dim r = Math.Max(1.0F, width / 2.0F)
+                If pts.Length = 1 Then
+                    Dim r = width / 2.0F
                     Using br As New SolidBrush(stroke.Color)
-                        g.FillEllipse(br, pt.X - r, pt.Y - r, r * 2, r * 2)
+                        g.FillEllipse(br, pts(0).X - r, pts(0).Y - r, width, width)
                     End Using
                 Else
-                    Dim pts(stroke.Points.Count - 1) As PointF
-                    For i = 0 To stroke.Points.Count - 1
-                        Dim p = stroke.Points(i)
-                        pts(i) = New PointF(
-                            destFrame.X + panX + p.X * contentW,
-                            destFrame.Y + panY + p.Y * contentH)
-                    Next
-                    g.DrawLines(pen, pts)
+                    ' Single path stroke avoids joint double-alpha artifacts from DrawLines
+                    Using path As New Drawing2D.GraphicsPath()
+                        path.AddLines(pts)
+                        g.DrawPath(pen, path)
+                    End Using
                 End If
             End Using
         Finally
             g.CompositingMode = prevMode
-            g.CompositingQuality = prevQuality
+            g.SmoothingMode = prevSmooth
+            g.PixelOffsetMode = prevPixel
         End Try
     End Sub
+
+    Private Shared Function BuildViewportPoints(
+        stroke As InkStroke,
+        destFrame As Rectangle,
+        panX As Single,
+        panY As Single,
+        contentW As Single,
+        contentH As Single) As PointF()
+
+        Dim list As New List(Of PointF)(stroke.Points.Count)
+        Dim lastX As Single = Single.NaN
+        Dim lastY As Single = Single.NaN
+        For Each p In stroke.Points
+            Dim pt As New PointF(
+                destFrame.X + panX + p.X * contentW,
+                destFrame.Y + panY + p.Y * contentH)
+            ' Drop exact duplicates that create zero-length segments / end artifacts
+            If list.Count = 0 OrElse Math.Abs(pt.X - lastX) > 0.01F OrElse Math.Abs(pt.Y - lastY) > 0.01F Then
+                list.Add(pt)
+                lastX = pt.X
+                lastY = pt.Y
+            End If
+        Next
+        Return list.ToArray()
+    End Function
 
     Protected Overrides Sub OnPaintBackground(e As PaintEventArgs)
         ' Fully painted in OnPaint — avoids flicker/ghost trails
@@ -443,13 +456,34 @@ Public Class MovableScreenshotBox
     Private Sub BeginDraw(local As Point)
         _mode = InteractMode.Draw
         _activeStroke = _canvas.DrawingSettings.CreateStroke()
-        Dim norm = DrawingHelper.ViewportToNormalized(local, Size, _pan, _zoom)
-        If norm.HasValue Then
-            _activeStroke.Points.Add(DrawingHelper.ClampNormalized(norm.Value))
-        End If
+        AppendStrokePoint(local, force:=True)
         Capture = True
         Cursor = Cursors.Cross
         Invalidate()
+    End Sub
+
+    ''' <summary>
+    ''' Adds a sample to the active stroke. force=True always records (stroke start/end).
+    ''' </summary>
+    Private Sub AppendStrokePoint(local As Point, Optional force As Boolean = False)
+        If _activeStroke Is Nothing Then Return
+        Dim norm = DrawingHelper.ViewportToNormalized(local, Size, _pan, _zoom)
+        If Not norm.HasValue Then Return
+
+        Dim p = DrawingHelper.ClampNormalized(norm.Value)
+        If _activeStroke.Points.Count = 0 OrElse force Then
+            _activeStroke.Points.Add(p)
+            Return
+        End If
+
+        Dim last = _activeStroke.Points(_activeStroke.Points.Count - 1)
+        Dim dx = p.X - last.X
+        Dim dy = p.Y - last.Y
+        ' Keep early samples denser for a clean start; thin out later
+        Dim minDistSq = If(_activeStroke.Points.Count < 4, 0.00000005F, 0.0000002F)
+        If (dx * dx + dy * dy) >= minDistSq Then
+            _activeStroke.Points.Add(p)
+        End If
     End Sub
 
     Protected Overrides Sub OnMouseMove(e As MouseEventArgs)
@@ -463,17 +497,10 @@ Public Class MovableScreenshotBox
         Dim screenCursor = PointToScreen(e.Location)
 
         If _mode = InteractMode.Draw Then
-            Dim norm = DrawingHelper.ViewportToNormalized(e.Location, Size, _pan, _zoom)
-            If norm.HasValue AndAlso _activeStroke IsNot Nothing Then
-                Dim p = DrawingHelper.ClampNormalized(norm.Value)
-                Dim last = If(_activeStroke.Points.Count > 0, _activeStroke.Points(_activeStroke.Points.Count - 1), p)
-                ' Skip tiny moves to keep stroke lists reasonable
-                Dim dx = p.X - last.X
-                Dim dy = p.Y - last.Y
-                If _activeStroke.Points.Count = 0 OrElse (dx * dx + dy * dy) > 0.00000025F Then
-                    _activeStroke.Points.Add(p)
-                    Invalidate()
-                End If
+            Dim before = If(_activeStroke IsNot Nothing, _activeStroke.Points.Count, 0)
+            AppendStrokePoint(e.Location, force:=False)
+            If _activeStroke IsNot Nothing AndAlso _activeStroke.Points.Count <> before Then
+                Invalidate()
             End If
             Return
         End If
@@ -657,6 +684,8 @@ Public Class MovableScreenshotBox
         Capture = False
 
         If wasDraw AndAlso _activeStroke IsNot Nothing Then
+            ' Snap final point to cursor so the stroke end is flush (not short of release)
+            AppendStrokePoint(PointToClient(Cursor.Position), force:=True)
             If _activeStroke.Points.Count >= 1 Then
                 _strokes.Add(_activeStroke)
             End If
