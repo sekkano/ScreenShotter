@@ -316,25 +316,38 @@ Public Class ScreenshotCanvas
     End Sub
 
     Private Sub OnBoxInteractionEnded(sender As Object, e As EventArgs)
-        If _scrollUpdatePending Then
-            _scrollUpdatePending = False
-            UpdateScrollBounds()
-        Else
-            UpdateScrollBounds()
-        End If
-        ' Sync model location after deferred move
+        _scrollUpdatePending = False
+        ' Sync model location/size after deferred move/resize
         Dim box = TryCast(sender, MovableScreenshotBox)
         If box IsNot Nothing Then
             _session.MoveScreenshot(box.ItemId, box.Location)
             Dim item = _session.TryGetItem(box.ItemId)
             If item IsNot Nothing Then
                 item.Size = box.Size
+                item.Location = box.Location
             End If
         End If
+        UpdateScrollBounds()
+    End Sub
+
+    ''' <summary>
+    ''' Stops move/resize/draw on every screenshot except <paramref name="except"/>,
+    ''' so mouse capture cannot stick on a previous control.
+    ''' </summary>
+    Public Sub CancelInteractionsExcept(except As MovableScreenshotBox)
+        For Each box In _boxes.Values
+            If except Is Nothing OrElse Not Object.ReferenceEquals(box, except) Then
+                If box.IsInteracting Then
+                    box.CancelInteraction()
+                End If
+            End If
+        Next
     End Sub
 
     Private Sub SelectBox(box As MovableScreenshotBox)
         If box Is Nothing Then Return
+        ' Selecting a different box must not leave another one mid-drag
+        CancelInteractionsExcept(box)
         _selectedId = box.ItemId
         For Each kvp In _boxes
             kvp.Value.Selected = (kvp.Key = _selectedId)
@@ -467,14 +480,17 @@ Public Class ScreenshotCanvas
     End Sub
 
     Public Sub UpdateScrollBounds()
-        Dim maxR = 0
-        Dim maxB = 0
+        Dim frames As New List(Of Rectangle)(_boxes.Count)
         For Each box In _boxes.Values
-            maxR = Math.Max(maxR, box.Left + box.Width)
-            maxB = Math.Max(maxB, box.Top + box.Height)
+            ' Ensure nothing sits in negative document space (unreachable by AutoScroll)
+            Dim clamped = CanvasCoordinateHelper.ClampDocumentLocation(box.Location, box.Size)
+            If clamped <> box.Location Then
+                box.Location = clamped
+            End If
+            frames.Add(box.Bounds)
         Next
-        Dim pad = 80
-        Dim need = New Size(Math.Max(ClientSize.Width, maxR + pad), Math.Max(ClientSize.Height, maxB + pad))
+
+        Dim need = CanvasCoordinateHelper.ComputeScrollMinSize(frames, ClientSize, pad:=120)
         If AutoScrollMinSize <> need Then
             AutoScrollMinSize = need
         End If

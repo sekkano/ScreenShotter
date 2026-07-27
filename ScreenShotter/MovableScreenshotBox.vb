@@ -48,9 +48,15 @@ Public Class MovableScreenshotBox
     Private _aspectReference As Size
     ''' <summary>When true, new samples keep the first stroke point's Y (Shift+draw horizontal).</summary>
     Private _drawLockHorizontal As Boolean
+    ''' <summary>Click-vs-drag: wait for a few pixels of movement before entering Move.</summary>
+    Private _pendingMove As Boolean
+    Private _pendingMoveLocal As Point
+    Private _pendingMoveScreen As Point
+    Private _endingInteract As Boolean
 
     Private Const Grip As Integer = 10
     Private Const MinDisplayPx As Integer = 48
+    Private Const MoveDragThresholdPx As Integer = 5
 
     Public ReadOnly Property ItemId As Guid
         Get
@@ -107,11 +113,12 @@ Public Class MovableScreenshotBox
     End Property
 
     ''' <summary>
-    ''' True while the user is actively dragging (move/resize/pan). Canvas should defer heavy work.
+    ''' True while the user is actively dragging (move/resize/pan/draw) or a move is pending.
+    ''' Canvas should defer heavy scroll work until interaction ends.
     ''' </summary>
     Public ReadOnly Property IsInteracting As Boolean
         Get
-            Return _mode <> InteractMode.None
+            Return _mode <> InteractMode.None OrElse _pendingMove
         End Get
     End Property
 
@@ -119,6 +126,27 @@ Public Class MovableScreenshotBox
     Public Event TransformChanged As EventHandler(Of TransformChangedEventArgs)
     Public Event SelectedChanged As EventHandler
     Public Event InteractionEnded As EventHandler
+
+    ''' <summary>
+    ''' Cancels any in-progress move/resize/draw (e.g. another screenshot took the click).
+    ''' </summary>
+    Public Sub CancelInteraction()
+        If _mode = InteractMode.None AndAlso Not _pendingMove Then Return
+        _pendingMove = False
+        If Capture Then Capture = False
+        Dim wasMoveOrResize = (_mode = InteractMode.Move OrElse _mode = InteractMode.Resize)
+        _mode = InteractMode.None
+        _resizeEdge = ResizeEdge.None
+        _activeStroke = Nothing
+        _drawLockHorizontal = False
+        Cursor = CursorForIdle(PointToClient(Cursor.Position))
+        If wasMoveOrResize Then
+            ' Snap into scrollable space
+            Dim clamped = CanvasCoordinateHelper.ClampDocumentLocation(Location, Size)
+            If clamped <> Location Then Location = clamped
+        End If
+        RaiseEvent InteractionEnded(Me, EventArgs.Empty)
+    End Sub
 
     Public Sub New(itemId As Guid, image As Image, canvas As ScreenshotCanvas)
         If image Is Nothing Then Throw New ArgumentNullException(NameOf(image))
@@ -412,6 +440,12 @@ Public Class MovableScreenshotBox
     Protected Overrides Sub OnMouseDown(e As MouseEventArgs)
         MyBase.OnMouseDown(e)
         If e.Button = MouseButtons.Left Then
+            ' Stop any stuck interaction on this or other boxes before starting a new one
+            If _mode <> InteractMode.None OrElse _pendingMove Then
+                CancelInteraction()
+            End If
+            _canvas?.CancelInteractionsExcept(Me)
+
             SelectMe()
             BringToFront()
             Dim edge = HitTestEdge(e.Location)
@@ -428,9 +462,8 @@ Public Class MovableScreenshotBox
                 Capture = True
             ElseIf ctrlHeld Then
                 ' Ctrl+drag always moves (works while a draw tool is active)
-                BeginMove(e.Location)
+                BeginPendingMove(e.Location)
             ElseIf DrawingHelper.IsInkTool(_canvas.ActiveTool) Then
-                ' Shift+draw locks horizontal; Shift alone without ink tool pans (below)
                 BeginDraw(e.Location, lockHorizontal:=shiftHeld)
             ElseIf shiftHeld Then
                 _mode = InteractMode.Pan
@@ -439,9 +472,11 @@ Public Class MovableScreenshotBox
                 Capture = True
                 Cursor = Cursors.SizeAll
             Else
-                BeginMove(e.Location)
+                ' Click selects; drag past threshold moves (avoids accidental teleport)
+                BeginPendingMove(e.Location)
             End If
         ElseIf e.Button = MouseButtons.Middle Then
+            _canvas?.CancelInteractionsExcept(Me)
             SelectMe()
             BringToFront()
             _mode = InteractMode.Pan
@@ -452,12 +487,38 @@ Public Class MovableScreenshotBox
         End If
     End Sub
 
+    Private Sub BeginPendingMove(local As Point)
+        _pendingMove = True
+        _pendingMoveLocal = local
+        _pendingMoveScreen = PointToScreen(local)
+        _mode = InteractMode.None
+        Capture = True
+        Cursor = Cursors.SizeAll
+    End Sub
+
     Private Sub BeginMove(local As Point)
+        _pendingMove = False
         _mode = InteractMode.Move
         _dragOffset = local
         Capture = True
         Cursor = Cursors.SizeAll
     End Sub
+
+    ''' <summary>
+    ''' Screen point → document location of the top-left of this control under the cursor.
+    ''' Accounts for AutoScroll so moves stay stable when the canvas is scrolled.
+    ''' </summary>
+    Private Function DocumentLocationFromScreen(screenCursor As Point, dragOffsetLocal As Point) As Point
+        Dim parentCtrl = TryCast(Parent, ScrollableControl)
+        If parentCtrl Is Nothing Then
+            Dim p = If(Parent, Me)
+            Dim client = p.PointToClient(screenCursor)
+            Return New Point(client.X - dragOffsetLocal.X, client.Y - dragOffsetLocal.Y)
+        End If
+        Dim clientPt = parentCtrl.PointToClient(screenCursor)
+        Dim doc = CanvasCoordinateHelper.ClientToDocument(clientPt, parentCtrl.AutoScrollPosition)
+        Return New Point(doc.X - dragOffsetLocal.X, doc.Y - dragOffsetLocal.Y)
+    End Function
 
     Private Sub BeginDraw(local As Point, Optional lockHorizontal As Boolean = False)
         _mode = InteractMode.Draw
@@ -518,15 +579,26 @@ Public Class MovableScreenshotBox
     Protected Overrides Sub OnMouseMove(e As MouseEventArgs)
         MyBase.OnMouseMove(e)
 
+        If _pendingMove Then
+            Dim screenCursor = PointToScreen(e.Location)
+            Dim dx = screenCursor.X - _pendingMoveScreen.X
+            Dim dy = screenCursor.Y - _pendingMoveScreen.Y
+            If dx * dx + dy * dy >= MoveDragThresholdPx * MoveDragThresholdPx Then
+                BeginMove(_pendingMoveLocal)
+            Else
+                Cursor = Cursors.SizeAll
+                Return
+            End If
+        End If
+
         If _mode = InteractMode.None Then
             Cursor = CursorForIdle(e.Location)
             Return
         End If
 
-        Dim screenCursor = PointToScreen(e.Location)
+        Dim screenPt = PointToScreen(e.Location)
 
         If _mode = InteractMode.Draw Then
-            ' Allow engaging horizontal lock mid-stroke by holding Shift
             If (Control.ModifierKeys And Keys.Shift) = Keys.Shift Then
                 _drawLockHorizontal = True
             End If
@@ -540,26 +612,22 @@ Public Class MovableScreenshotBox
 
         If _mode = InteractMode.Move Then
             Cursor = Cursors.SizeAll
-            Dim parentCtrl = Parent
-            If parentCtrl Is Nothing Then Return
-            Dim newLoc = parentCtrl.PointToClient(screenCursor)
-            newLoc.Offset(-_dragOffset.X, -_dragOffset.Y)
-            newLoc.X = Math.Max(-Width + 40, newLoc.X)
-            newLoc.Y = Math.Max(-Height + 40, newLoc.Y)
+            Dim newLoc = DocumentLocationFromScreen(screenPt, _dragOffset)
+            newLoc = CanvasCoordinateHelper.ClampDocumentLocation(newLoc, Size)
             If newLoc <> Location Then
                 SetBounds(newLoc.X, newLoc.Y, Width, Height, BoundsSpecified.Location)
             End If
 
         ElseIf _mode = InteractMode.Pan Then
-            Dim dx = screenCursor.X - _panStartCursor.X
-            Dim dy = screenCursor.Y - _panStartCursor.Y
+            Dim dx = screenPt.X - _panStartCursor.X
+            Dim dy = screenPt.Y - _panStartCursor.Y
             Dim content = ZoomHelper.ContentSize(Size, _zoom)
             _pan = ZoomHelper.ClampPan(New Point(_panStart.X + dx, _panStart.Y + dy), content, Size)
             Invalidate()
 
         ElseIf _mode = InteractMode.Resize Then
-            Dim dx = screenCursor.X - _resizeStartCursor.X
-            Dim dy = screenCursor.Y - _resizeStartCursor.Y
+            Dim dx = screenPt.X - _resizeStartCursor.X
+            Dim dy = screenPt.Y - _resizeStartCursor.Y
             Dim tentative As New Size(_resizeStartSize.Width, _resizeStartSize.Height)
 
             Select Case _resizeEdge
@@ -594,6 +662,7 @@ Public Class MovableScreenshotBox
                 Case ResizeEdge.N, ResizeEdge.NE, ResizeEdge.NW
                     newLoc.Y = _resizeStartLocation.Y + (_resizeStartSize.Height - display.Height)
             End Select
+            newLoc = CanvasCoordinateHelper.ClampDocumentLocation(newLoc, display)
 
             SetBounds(newLoc.X, newLoc.Y, display.Width, display.Height, BoundsSpecified.All)
             Dim content = ZoomHelper.ContentSize(Size, _zoom)
@@ -605,6 +674,14 @@ Public Class MovableScreenshotBox
     Protected Overrides Sub OnMouseUp(e As MouseEventArgs)
         MyBase.OnMouseUp(e)
         EndInteract()
+    End Sub
+
+    Protected Overrides Sub OnMouseCaptureChanged(e As EventArgs)
+        MyBase.OnMouseCaptureChanged(e)
+        ' If capture is lost (click elsewhere, alt-tab, etc.), stop stuck drags
+        If Not Capture AndAlso (_mode <> InteractMode.None OrElse _pendingMove) AndAlso Not _endingInteract Then
+            EndInteract()
+        End If
     End Sub
 
     Protected Overrides Sub OnMouseWheel(e As MouseEventArgs)
@@ -731,33 +808,48 @@ Public Class MovableScreenshotBox
     End Sub
 
     Private Sub EndInteract()
-        If _mode = InteractMode.None Then Return
-        Dim wasMove = _mode = InteractMode.Move
-        Dim wasResize = _mode = InteractMode.Resize
-        Dim wasDraw = _mode = InteractMode.Draw
-        _mode = InteractMode.None
-        _resizeEdge = ResizeEdge.None
-        Capture = False
+        If _endingInteract Then Return
+        If _mode = InteractMode.None AndAlso Not _pendingMove Then Return
+        _endingInteract = True
+        Try
+            Dim wasMove = _mode = InteractMode.Move
+            Dim wasResize = _mode = InteractMode.Resize
+            Dim wasDraw = _mode = InteractMode.Draw
+            Dim wasPendingOnly = _pendingMove AndAlso _mode = InteractMode.None
+            _pendingMove = False
+            _mode = InteractMode.None
+            _resizeEdge = ResizeEdge.None
+            If Capture Then Capture = False
 
-        If wasDraw AndAlso _activeStroke IsNot Nothing Then
-            ' Snap final point to cursor so the stroke end is flush (not short of release)
-            AppendStrokePoint(PointToClient(Cursor.Position), force:=True)
-            If _activeStroke.Points.Count >= 1 Then
-                _strokes.Add(_activeStroke)
+            If wasDraw AndAlso _activeStroke IsNot Nothing Then
+                AppendStrokePoint(PointToClient(Cursor.Position), force:=True)
+                If _activeStroke.Points.Count >= 1 Then
+                    _strokes.Add(_activeStroke)
+                End If
+                _activeStroke = Nothing
+                _drawLockHorizontal = False
+                Invalidate()
             End If
-            _activeStroke = Nothing
-            _drawLockHorizontal = False
-            Invalidate()
-        End If
 
-        If wasMove Then
-            RaisePosition()
-        End If
-        If wasResize Then
-            RaiseTransform()
-        End If
-        Cursor = CursorForIdle(PointToClient(Cursor.Position))
-        RaiseEvent InteractionEnded(Me, EventArgs.Empty)
+            ' Keep control in non-negative document space so AutoScroll can reach it
+            If wasMove OrElse wasResize Then
+                Dim clamped = CanvasCoordinateHelper.ClampDocumentLocation(Location, Size)
+                If clamped <> Location Then
+                    Location = clamped
+                End If
+            End If
+
+            If wasMove AndAlso Not wasPendingOnly Then
+                RaisePosition()
+            End If
+            If wasResize Then
+                RaiseTransform()
+            End If
+            Cursor = CursorForIdle(PointToClient(Cursor.Position))
+            RaiseEvent InteractionEnded(Me, EventArgs.Empty)
+        Finally
+            _endingInteract = False
+        End Try
     End Sub
 
     Private Function CursorForIdle(Optional local As Point? = Nothing) As Cursor
