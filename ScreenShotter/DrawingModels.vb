@@ -36,86 +36,139 @@ Public Class InkStroke
 End Class
 
 ''' <summary>
-''' Live ink settings from the drawing toolbar (shared per tab via the canvas).
+''' Saved color / opacity / thickness for one ink tool.
+''' </summary>
+Public Class ToolAppearance
+    Public Sub New(baseColor As Color, opacityPercent As Integer, thickness As Single)
+        Me.BaseColor = Color.FromArgb(255, baseColor)
+        Me.OpacityPercent = DrawingHelper.ClampOpacityPercent(opacityPercent)
+        Me.Thickness = DrawingHelper.ClampThickness(thickness)
+    End Sub
+
+    Public Property BaseColor As Color
+    Public Property OpacityPercent As Integer
+    Public Property Thickness As Single
+
+    Public Shared Function FromPreset(preset As DrawingToolPreset) As ToolAppearance
+        Return New ToolAppearance(preset.BaseColor, preset.OpacityPercent, preset.Thickness)
+    End Function
+End Class
+
+''' <summary>
+''' Live ink settings from the drawing toolbar. Appearance is stored per ink tool
+''' so switching Highlighter ↔ Pen restores each tool's last color/opacity/size.
 ''' </summary>
 Public Class DrawingSettings
-    Private _opacityPercent As Integer = 43
-    Private _thickness As Single = 28.0F
-    Private _baseColor As Color = Color.FromArgb(255, 255, 230, 0)
     Private _tool As DrawingTool = DrawingTool.Highlighter
+    Private ReadOnly _appearance As New Dictionary(Of DrawingTool, ToolAppearance)()
+
+    Public Sub New()
+        ' Seed each ink tool with its defaults once; later edits are kept.
+        EnsureSlot(DrawingTool.Highlighter)
+        EnsureSlot(DrawingTool.Pen)
+    End Sub
 
     Public Property Tool As DrawingTool
         Get
             Return _tool
         End Get
         Set(value As DrawingTool)
-            If value = DrawingTool.Pointer Then
-                _tool = DrawingTool.Highlighter
-            Else
-                _tool = value
-            End If
+            SelectTool(value)
         End Set
     End Property
 
-    ''' <summary>RGB base color (alpha ignored; use OpacityPercent).</summary>
+    ''' <summary>
+    ''' Switches the active ink tool without resetting its saved appearance.
+    ''' </summary>
+    Public Sub SelectTool(inkTool As DrawingTool)
+        Dim t = NormalizeInkTool(inkTool)
+        EnsureSlot(t)
+        _tool = t
+    End Sub
+
+    ''' <summary>RGB base color for the active tool (alpha ignored; use OpacityPercent).</summary>
     Public Property BaseColor As Color
         Get
-            Return Color.FromArgb(255, _baseColor)
+            Return CurrentAppearance().BaseColor
         End Get
         Set(value As Color)
-            _baseColor = Color.FromArgb(255, value)
+            CurrentAppearance().BaseColor = Color.FromArgb(255, value)
         End Set
     End Property
 
-    ''' <summary>0–100% ink opacity.</summary>
+    ''' <summary>0–100% ink opacity for the active tool.</summary>
     Public Property OpacityPercent As Integer
         Get
-            Return _opacityPercent
+            Return CurrentAppearance().OpacityPercent
         End Get
         Set(value As Integer)
-            _opacityPercent = DrawingHelper.ClampOpacityPercent(value)
+            CurrentAppearance().OpacityPercent = DrawingHelper.ClampOpacityPercent(value)
         End Set
     End Property
 
-    ''' <summary>Stroke width in natural image pixels.</summary>
+    ''' <summary>Stroke width in natural image pixels for the active tool.</summary>
     Public Property Thickness As Single
         Get
-            Return _thickness
+            Return CurrentAppearance().Thickness
         End Get
         Set(value As Single)
-            _thickness = DrawingHelper.ClampThickness(value)
+            CurrentAppearance().Thickness = DrawingHelper.ClampThickness(value)
         End Set
     End Property
 
     Public ReadOnly Property StrokeColor As Color
         Get
-            Dim a = CInt(Math.Round(_opacityPercent / 100.0 * 255.0))
+            Dim app = CurrentAppearance()
+            Dim a = CInt(Math.Round(app.OpacityPercent / 100.0 * 255.0))
             a = Math.Max(0, Math.Min(255, a))
-            Return Color.FromArgb(a, _baseColor)
+            Return Color.FromArgb(a, app.BaseColor)
         End Get
     End Property
 
     Public Function CreateStroke() As InkStroke
-        Dim tool = If(_tool = DrawingTool.Pointer, DrawingTool.Highlighter, _tool)
-        Return New InkStroke(tool, StrokeColor, _thickness)
+        Dim tool = NormalizeInkTool(_tool)
+        Dim app = CurrentAppearance()
+        Dim a = CInt(Math.Round(app.OpacityPercent / 100.0 * 255.0))
+        a = Math.Max(0, Math.Min(255, a))
+        Dim color = Color.FromArgb(a, app.BaseColor)
+        Return New InkStroke(tool, color, app.Thickness)
     End Function
 
     ''' <summary>
-    ''' Applies default color / opacity / thickness for the selected ink tool.
-    ''' Highlighter = wide translucent yellow; Pen = thin opaque black.
+    ''' Resets one tool (or the active tool) back to factory defaults.
     ''' </summary>
     Public Sub ApplyToolPreset(inkTool As DrawingTool)
-        Dim preset = DrawingHelper.GetToolPreset(inkTool)
-        ' Assign fields directly (avoid Pointer→Highlighter remap on accidental default)
-        If preset.Tool = DrawingTool.Pen Then
-            _tool = DrawingTool.Pen
-        Else
-            _tool = DrawingTool.Highlighter
-        End If
-        _baseColor = Color.FromArgb(255, preset.BaseColor)
-        _opacityPercent = DrawingHelper.ClampOpacityPercent(preset.OpacityPercent)
-        _thickness = DrawingHelper.ClampThickness(preset.Thickness)
+        Dim t = NormalizeInkTool(inkTool)
+        Dim preset = DrawingHelper.GetToolPreset(t)
+        _appearance(t) = ToolAppearance.FromPreset(preset)
+        _tool = t
     End Sub
+
+    ''' <summary>
+    ''' Appearance snapshot for a tool (for tests / UI sync).
+    ''' </summary>
+    Public Function GetAppearance(inkTool As DrawingTool) As ToolAppearance
+        Dim t = NormalizeInkTool(inkTool)
+        EnsureSlot(t)
+        Return _appearance(t)
+    End Function
+
+    Private Function CurrentAppearance() As ToolAppearance
+        EnsureSlot(_tool)
+        Return _appearance(_tool)
+    End Function
+
+    Private Sub EnsureSlot(inkTool As DrawingTool)
+        Dim t = NormalizeInkTool(inkTool)
+        If Not _appearance.ContainsKey(t) Then
+            _appearance(t) = ToolAppearance.FromPreset(DrawingHelper.GetToolPreset(t))
+        End If
+    End Sub
+
+    Private Shared Function NormalizeInkTool(tool As DrawingTool) As DrawingTool
+        If tool = DrawingTool.Pen Then Return DrawingTool.Pen
+        Return DrawingTool.Highlighter
+    End Function
 End Class
 
 ''' <summary>

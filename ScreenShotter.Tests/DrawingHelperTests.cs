@@ -84,6 +84,38 @@ public class DrawingHelperTests
     }
 
     [Fact]
+    public void SelectTool_RestoresPerToolAppearance()
+    {
+        var settings = new DrawingSettings();
+
+        // Customize highlighter
+        settings.SelectTool(DrawingTool.Highlighter);
+        settings.BaseColor = Color.FromArgb(255, 255, 0, 0);
+        settings.OpacityPercent = 60;
+        settings.Thickness = 36;
+
+        // Customize pen
+        settings.SelectTool(DrawingTool.Pen);
+        settings.BaseColor = Color.FromArgb(255, 0, 0, 255);
+        settings.OpacityPercent = 90;
+        settings.Thickness = 8;
+
+        // Back to highlighter — previous custom values restored
+        settings.SelectTool(DrawingTool.Highlighter);
+        Assert.Equal(DrawingTool.Highlighter, settings.Tool);
+        Assert.Equal(Color.FromArgb(255, 255, 0, 0).ToArgb(), settings.BaseColor.ToArgb());
+        Assert.Equal(60, settings.OpacityPercent);
+        Assert.Equal(36f, settings.Thickness);
+
+        // Back to pen — its custom values restored
+        settings.SelectTool(DrawingTool.Pen);
+        Assert.Equal(DrawingTool.Pen, settings.Tool);
+        Assert.Equal(Color.FromArgb(255, 0, 0, 255).ToArgb(), settings.BaseColor.ToArgb());
+        Assert.Equal(90, settings.OpacityPercent);
+        Assert.Equal(8f, settings.Thickness);
+    }
+
+    [Fact]
     public void ColorWithOpacity_ClampsAndAppliesAlpha()
     {
         var c = DrawingHelper.ColorWithOpacity(Color.Red, 25);

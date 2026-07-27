@@ -138,8 +138,8 @@ Public Class DrawingToolStrip
     Private Sub OnToolChanged(sender As Object, e As EventArgs)
         If _suppressEvents Then Return
         Dim tool = ToolFromComboIndex(_cmbTool.SelectedIndex)
-        ' Apply distinct presets so Pen is not identical to Highlighter
-        _settings.ApplyToolPreset(tool)
+        ' Switch tool only — restore that tool's last color/opacity/size
+        _settings.SelectTool(tool)
         SyncAppearanceControlsFromSettings()
         ' Selecting a drawing tool switches out of pure Pointer mode
         _modeIsPointer = False
