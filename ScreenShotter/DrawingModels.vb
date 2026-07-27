@@ -104,12 +104,17 @@ Public Class DrawingSettings
     ''' Applies default color / opacity / thickness for the selected ink tool.
     ''' Highlighter = wide translucent yellow; Pen = thin opaque black.
     ''' </summary>
-    Public Sub ApplyToolPreset(tool As DrawingTool)
-        Dim preset = DrawingHelper.GetToolPreset(tool)
-        Tool = preset.Tool
-        BaseColor = preset.BaseColor
-        OpacityPercent = preset.OpacityPercent
-        Thickness = preset.Thickness
+    Public Sub ApplyToolPreset(inkTool As DrawingTool)
+        Dim preset = DrawingHelper.GetToolPreset(inkTool)
+        ' Assign fields directly (avoid Pointer→Highlighter remap on accidental default)
+        If preset.Tool = DrawingTool.Pen Then
+            _tool = DrawingTool.Pen
+        Else
+            _tool = DrawingTool.Highlighter
+        End If
+        _baseColor = Color.FromArgb(255, preset.BaseColor)
+        _opacityPercent = DrawingHelper.ClampOpacityPercent(preset.OpacityPercent)
+        _thickness = DrawingHelper.ClampThickness(preset.Thickness)
     End Sub
 End Class
 
