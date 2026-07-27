@@ -83,6 +83,15 @@ Public Class ScreenshotCanvas
         End Get
     End Property
 
+    ''' <summary>
+    ''' Prevent AutoScroll from jumping when a screenshot is focused/selected.
+    ''' Default WinForms behavior scrolls the focused child into view, which looks
+    ''' like other screenshots "teleport" without the user dragging them.
+    ''' </summary>
+    Protected Overrides Function ScrollToControl(activeControl As Control) As Point
+        Return DisplayRectangle.Location
+    End Function
+
     Public ReadOnly Property Session As TabSession
         Get
             Return _session
@@ -353,13 +362,15 @@ Public Class ScreenshotCanvas
             kvp.Value.Selected = (kvp.Key = _selectedId)
         Next
         box.BringToFront()
-        If box.CanFocus Then box.Focus()
+        ' Do not Focus() here — focusing a child makes AutoScroll jump the viewport.
+        ' Delete/Backspace are handled by the main form via SelectedBox.
         RaiseEvent SelectionChanged(Me, EventArgs.Empty)
     End Sub
 
     Protected Overrides Sub OnMouseDown(e As MouseEventArgs)
         MyBase.OnMouseDown(e)
         If e.Button = MouseButtons.Left Then
+            ' Focus the canvas (not a child) so keyboard works without scroll-into-view
             Focus()
         End If
     End Sub

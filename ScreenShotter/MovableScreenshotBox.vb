@@ -56,7 +56,8 @@ Public Class MovableScreenshotBox
 
     Private Const Grip As Integer = 10
     Private Const MinDisplayPx As Integer = 48
-    Private Const MoveDragThresholdPx As Integer = 5
+    ''' <summary>Pixels of mouse travel before a click becomes a move (avoids jump on select).</summary>
+    Private Const MoveDragThresholdPx As Integer = 8
 
     Public ReadOnly Property ItemId As Guid
         Get
@@ -493,7 +494,8 @@ Public Class MovableScreenshotBox
         _pendingMoveScreen = PointToScreen(local)
         _mode = InteractMode.None
         Capture = True
-        Cursor = Cursors.SizeAll
+        ' Keep normal idle cursor until drag threshold is crossed (click ≠ move)
+        Cursor = CursorForIdle(local)
     End Sub
 
     Private Sub BeginMove(local As Point)
@@ -585,8 +587,8 @@ Public Class MovableScreenshotBox
             Dim dy = screenCursor.Y - _pendingMoveScreen.Y
             If dx * dx + dy * dy >= MoveDragThresholdPx * MoveDragThresholdPx Then
                 BeginMove(_pendingMoveLocal)
+                ' Fall through into Move handling with this same event
             Else
-                Cursor = Cursors.SizeAll
                 Return
             End If
         End If
@@ -815,6 +817,7 @@ Public Class MovableScreenshotBox
             Dim wasMove = _mode = InteractMode.Move
             Dim wasResize = _mode = InteractMode.Resize
             Dim wasDraw = _mode = InteractMode.Draw
+            ' Pure click (select only) — must not change Location or fire move events
             Dim wasPendingOnly = _pendingMove AndAlso _mode = InteractMode.None
             _pendingMove = False
             _mode = InteractMode.None
@@ -832,7 +835,7 @@ Public Class MovableScreenshotBox
             End If
 
             ' Keep control in non-negative document space so AutoScroll can reach it
-            If wasMove OrElse wasResize Then
+            If (wasMove OrElse wasResize) AndAlso Not wasPendingOnly Then
                 Dim clamped = CanvasCoordinateHelper.ClampDocumentLocation(Location, Size)
                 If clamped <> Location Then
                     Location = clamped
@@ -846,7 +849,10 @@ Public Class MovableScreenshotBox
                 RaiseTransform()
             End If
             Cursor = CursorForIdle(PointToClient(Cursor.Position))
-            RaiseEvent InteractionEnded(Me, EventArgs.Empty)
+            ' Skip scroll-bounds churn on simple select clicks
+            If Not wasPendingOnly OrElse wasDraw OrElse wasResize OrElse wasMove Then
+                RaiseEvent InteractionEnded(Me, EventArgs.Empty)
+            End If
         Finally
             _endingInteract = False
         End Try
