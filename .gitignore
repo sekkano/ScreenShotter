@@ -49,6 +49,9 @@ Desktop.ini
 
 ## Publish / installers
 [Pp]ublish/
+**/PublishProfiles/
+*.pubxml
+*.pubxml.user
 *.appx
 *.appxbundle
 *.msix
