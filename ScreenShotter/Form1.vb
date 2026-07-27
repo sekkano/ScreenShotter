@@ -339,7 +339,7 @@
             End If
             statusLabel.Text =
                 $"{tabName}: {count} · zoom {zoomTxt} · {tool}{ink} — " &
-                "Ctrl+drag moves · Ctrl+wheel pans zoom · Shift+draw = horizontal · Save / Del"
+                "Ctrl+drag moves · Shift+wheel zooms · Ctrl+wheel pans · Shift+draw = horizontal · Save / Del"
             btnZoomReset.Text = zoomTxt
         Else
             Dim tool = If(canvas IsNot Nothing, DrawingHelper.ToolDisplayName(canvas.ActiveTool), "Pointer")

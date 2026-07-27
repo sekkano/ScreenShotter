@@ -32,6 +32,7 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 |----------|--------|
 | **Ctrl+S** | Save Tab |
 | **Delete** or **Backspace** | Delete the selected screenshot |
+| **Shift + mouse wheel** (over a screenshot) | Zoom that screenshot |
 | **Ctrl + mouse wheel** (over a zoomed image) | Pan the zoomed image (vertical / side-tilt) |
 | **Esc** or **right-click** | Cancel capture (while snipping) |
 
@@ -89,6 +90,7 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 ### Zoom
 
 - Select a screenshot, then use toolbar **+** / **−** / **100%**.
+- **Shift + mouse wheel** over a screenshot zooms it (under the cursor).
 - **Double-click** a screenshot to reset zoom to **100%**.
 - **Ctrl + wheel** (up/down or side-tilt) pans inside a **zoomed** image.
 - **Shift + drag** (Pointer / when not drawing) or **middle-mouse drag** also pans when zoomed.
@@ -99,10 +101,11 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 
 ### Scroll the canvas
 
-- **Wheel up/down** — always vertical form scroll (even over a screenshot).
-- **Side-tilt wheel** — always horizontal form scroll (even over a screenshot).
-- **Ctrl + wheel** over a zoomed screenshot — pan that image instead of the form.
-- **Shift** does not change scroll direction (Shift+draw still locks a horizontal stroke).
+- **Wheel up/down** — vertical form scroll (even over a screenshot), unless **Shift** or **Ctrl** is held.
+- **Side-tilt wheel** — horizontal form scroll (even over a screenshot), unless **Ctrl** pans a zoomed image.
+- **Shift + wheel** over a screenshot — zoom that image.
+- **Ctrl + wheel** over a zoomed screenshot — pan that image.
+- **Shift + drag** while drawing still locks a horizontal stroke.
 - First click on an inactive window both **activates** the app and performs the click (no double-click needed).
 
 ---

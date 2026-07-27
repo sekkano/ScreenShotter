@@ -362,10 +362,19 @@ Public Class ScreenshotCanvas
     End Function
 
     Protected Overrides Sub OnMouseWheel(e As MouseEventArgs)
-        ' Vertical wheel: Ctrl over zoomed image → pan image; else form vertical scroll
         Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
+        Dim shift = (Control.ModifierKeys And Keys.Shift) = Keys.Shift
         Dim box = GetScreenshotUnderPointer()
 
+        ' Shift + wheel → zoom hovered screenshot
+        If shift AndAlso box IsNot Nothing Then
+            box.HandleWheelZoom(e.Delta, Cursor.Position)
+            Dim handledZ = TryCast(e, HandledMouseEventArgs)
+            If handledZ IsNot Nothing Then handledZ.Handled = True
+            Return
+        End If
+
+        ' Ctrl + wheel → pan zoomed image (else form scroll)
         If ctrl AndAlso box IsNot Nothing AndAlso box.HandleWheelPan(e.Delta, horizontal:=False) Then
             Dim handled = TryCast(e, HandledMouseEventArgs)
             If handled IsNot Nothing Then handled.Handled = True
@@ -381,17 +390,23 @@ Public Class ScreenshotCanvas
 
         If m.Msg = WM_MOUSEWHEEL Then
             Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
-            If ctrl Then
-                Dim box = GetScreenshotUnderPointer()
-                If box IsNot Nothing Then
-                    Dim delta = WheelScrollHelper.DeltaFromWParam(m.WParam)
-                    If box.HandleWheelPan(delta, horizontal:=False) Then
-                        m.Result = New IntPtr(1)
-                        Return
-                    End If
+            Dim shift = (Control.ModifierKeys And Keys.Shift) = Keys.Shift
+            Dim box = GetScreenshotUnderPointer()
+            Dim delta = WheelScrollHelper.DeltaFromWParam(m.WParam)
+
+            If shift AndAlso box IsNot Nothing Then
+                box.HandleWheelZoom(delta, Cursor.Position)
+                m.Result = New IntPtr(1)
+                Return
+            End If
+
+            If ctrl AndAlso box IsNot Nothing Then
+                If box.HandleWheelPan(delta, horizontal:=False) Then
+                    m.Result = New IntPtr(1)
+                    Return
                 End If
             End If
-            ' No Ctrl (or nothing to pan): vertical form AutoScroll
+            ' Default: vertical form AutoScroll
         End If
 
         If m.Msg = WM_MOUSEHWHEEL Then
@@ -402,7 +417,6 @@ Public Class ScreenshotCanvas
                 m.Result = New IntPtr(1)
                 Return
             End If
-            ' Side-tilt without Ctrl (or can't pan): form horizontal scroll
             ScrollFromWheel(delta, horizontal:=True)
             m.Result = New IntPtr(1)
             Return

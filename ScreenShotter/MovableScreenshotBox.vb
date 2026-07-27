@@ -744,9 +744,10 @@ Public Class MovableScreenshotBox
     End Sub
 
     ''' <summary>
-    ''' Wheel routing over a screenshot (consistent):
-    ''' - No Ctrl: always scroll the form (vertical or side-tilt horizontal)
-    ''' - Ctrl + vertical/side-tilt: pan zoomed image content when possible; else form scroll
+    ''' Wheel routing over a screenshot:
+    ''' - Shift + vertical wheel → zoom this image
+    ''' - Ctrl + vertical/side-tilt → pan zoomed content (else form scroll)
+    ''' - No modifiers → form scroll (vertical or side-tilt horizontal)
     ''' </summary>
     Protected Overrides Sub WndProc(ByRef m As Message)
         Const WM_MOUSEWHEEL As Integer = &H20A
@@ -777,6 +778,14 @@ Public Class MovableScreenshotBox
 
     Private Sub HandleVerticalWheel(delta As Integer)
         Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
+        Dim shift = (Control.ModifierKeys And Keys.Shift) = Keys.Shift
+
+        ' Shift+wheel → zoom (wins over Ctrl if both held)
+        If shift Then
+            HandleWheelZoom(delta, Cursor.Position)
+            Return
+        End If
+
         If ctrl AndAlso HandleWheelPan(delta, horizontal:=False) Then
             Return
         End If
@@ -785,6 +794,7 @@ Public Class MovableScreenshotBox
 
     Private Sub HandleHorizontalWheel(delta As Integer)
         Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
+        ' Side-tilt: Ctrl pans zoomed content; otherwise form horizontal scroll
         If ctrl AndAlso HandleWheelPan(delta, horizontal:=True) Then
             Return
         End If
