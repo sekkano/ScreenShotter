@@ -1,15 +1,23 @@
 ''' <summary>
-''' Annotation toolbar that sits under the tab headers (top of each tab page).
-''' Starts with Pointer + Highlighter.
+''' Annotation toolbar under the tab headers: Pointer, drawing-tool dropdown,
+''' color, transparency, and thickness.
 ''' </summary>
 Public Class DrawingToolStrip
     Inherits ClickThroughToolStrip
 
     Private ReadOnly _btnPointer As ToolStripButton
-    Private ReadOnly _btnHighlighter As ToolStripButton
-    Private _activeTool As DrawingTool = DrawingTool.Pointer
+    Private ReadOnly _cmbTool As ToolStripComboBox
+    Private ReadOnly _btnColor As ToolStripButton
+    Private ReadOnly _cmbOpacity As ToolStripComboBox
+    Private ReadOnly _cmbThickness As ToolStripComboBox
+    Private ReadOnly _settings As New DrawingSettings()
+    Private _modeIsPointer As Boolean = True
+    Private _suppressEvents As Boolean
 
-    Public Event ActiveToolChanged As EventHandler
+    Public Event SettingsChanged As EventHandler
+
+    Private Shared ReadOnly OpacityChoices As Integer() = {20, 30, 40, 50, 60, 70, 80, 90, 100}
+    Private Shared ReadOnly ThicknessChoices As Single() = {8, 12, 16, 20, 28, 36, 48, 64}
 
     Public Sub New()
         MyBase.New()
@@ -22,50 +30,205 @@ Public Class DrawingToolStrip
             .CheckOnClick = True,
             .Checked = True,
             .DisplayStyle = ToolStripItemDisplayStyle.Text,
-            .ToolTipText = "Select and move screenshots"
+            .ToolTipText = "Select and move screenshots (or use Ctrl+drag while drawing)"
         }
-        _btnHighlighter = New ToolStripButton("Highlighter") With {
-            .CheckOnClick = True,
-            .Checked = False,
+
+        _cmbTool = New ToolStripComboBox("cmbTool") With {
+            .DropDownStyle = ComboBoxStyle.DropDownList,
+            .AutoSize = False,
+            .Width = 110,
+            .ToolTipText = "Drawing tool"
+        }
+        _cmbTool.Items.AddRange(New Object() {
+            DrawingHelper.ToolDisplayName(DrawingTool.Highlighter),
+            DrawingHelper.ToolDisplayName(DrawingTool.Pen)
+        })
+        _cmbTool.SelectedIndex = 0
+
+        _btnColor = New ToolStripButton("  ") With {
             .DisplayStyle = ToolStripItemDisplayStyle.Text,
-            .ToolTipText = "Draw a translucent yellow highlight on a screenshot"
+            .ToolTipText = "Ink color",
+            .AutoSize = False,
+            .Width = 36
         }
+        UpdateColorSwatch()
+
+        _cmbOpacity = New ToolStripComboBox("cmbOpacity") With {
+            .DropDownStyle = ComboBoxStyle.DropDownList,
+            .AutoSize = False,
+            .Width = 72,
+            .ToolTipText = "Transparency / opacity"
+        }
+        For Each pct In OpacityChoices
+            _cmbOpacity.Items.Add($"{pct}%")
+        Next
+        SelectOpacity(DrawingHelper.DefaultOpacityPercent)
+
+        _cmbThickness = New ToolStripComboBox("cmbThickness") With {
+            .DropDownStyle = ComboBoxStyle.DropDownList,
+            .AutoSize = False,
+            .Width = 72,
+            .ToolTipText = "Stroke thickness"
+        }
+        For Each t In ThicknessChoices
+            _cmbThickness.Items.Add($"{CInt(t)} px")
+        Next
+        SelectThickness(DrawingHelper.DefaultThickness)
 
         Items.Add(_btnPointer)
         Items.Add(New ToolStripSeparator())
-        Items.Add(_btnHighlighter)
+        Items.Add(New ToolStripLabel("Draw:") With {.ForeColor = Color.DimGray})
+        Items.Add(_cmbTool)
+        Items.Add(New ToolStripLabel("Color:") With {.ForeColor = Color.DimGray})
+        Items.Add(_btnColor)
+        Items.Add(New ToolStripLabel("Opacity:") With {.ForeColor = Color.DimGray})
+        Items.Add(_cmbOpacity)
+        Items.Add(New ToolStripLabel("Size:") With {.ForeColor = Color.DimGray})
+        Items.Add(_cmbThickness)
 
         AddHandler _btnPointer.Click, AddressOf OnPointerClick
-        AddHandler _btnHighlighter.Click, AddressOf OnHighlighterClick
+        AddHandler _cmbTool.SelectedIndexChanged, AddressOf OnToolChanged
+        AddHandler _btnColor.Click, AddressOf OnColorClick
+        AddHandler _cmbOpacity.SelectedIndexChanged, AddressOf OnOpacityChanged
+        AddHandler _cmbThickness.SelectedIndexChanged, AddressOf OnThicknessChanged
+        ' Opening or focusing the draw list switches into draw mode (even if tool unchanged)
+        AddHandler _cmbTool.DropDown, AddressOf OnDrawUiActivated
+        AddHandler _cmbTool.Click, AddressOf OnDrawUiActivated
+        AddHandler _cmbOpacity.DropDown, AddressOf OnDrawUiActivated
+        AddHandler _cmbThickness.DropDown, AddressOf OnDrawUiActivated
     End Sub
+
+    Private Sub OnDrawUiActivated(sender As Object, e As EventArgs)
+        If _suppressEvents Then Return
+        If _modeIsPointer Then
+            _modeIsPointer = False
+            _btnPointer.Checked = False
+            RaiseSettingsChanged()
+        End If
+    End Sub
+
+    ''' <summary>Current tool for the canvas: Pointer or a draw tool.</summary>
+    <System.ComponentModel.Browsable(False)>
+    <System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)>
+    Public ReadOnly Property ActiveTool As DrawingTool
+        Get
+            If _modeIsPointer Then Return DrawingTool.Pointer
+            Return _settings.Tool
+        End Get
+    End Property
 
     <System.ComponentModel.Browsable(False)>
     <System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)>
-    Public Property ActiveTool As DrawingTool
+    Public ReadOnly Property Settings As DrawingSettings
         Get
-            Return _activeTool
+            Return _settings
         End Get
-        Set(value As DrawingTool)
-            If _activeTool = value Then
-                SyncButtons()
-                Return
-            End If
-            _activeTool = value
-            SyncButtons()
-            RaiseEvent ActiveToolChanged(Me, EventArgs.Empty)
-        End Set
     End Property
 
+    Private Sub RaiseSettingsChanged()
+        RaiseEvent SettingsChanged(Me, EventArgs.Empty)
+    End Sub
+
     Private Sub OnPointerClick(sender As Object, e As EventArgs)
-        ActiveTool = DrawingTool.Pointer
+        _modeIsPointer = True
+        _btnPointer.Checked = True
+        RaiseSettingsChanged()
     End Sub
 
-    Private Sub OnHighlighterClick(sender As Object, e As EventArgs)
-        ActiveTool = DrawingTool.Highlighter
+    Private Sub OnToolChanged(sender As Object, e As EventArgs)
+        If _suppressEvents Then Return
+        _settings.Tool = ToolFromComboIndex(_cmbTool.SelectedIndex)
+        ' Selecting a drawing tool switches out of pure Pointer mode
+        _modeIsPointer = False
+        _btnPointer.Checked = False
+        RaiseSettingsChanged()
     End Sub
 
-    Private Sub SyncButtons()
-        _btnPointer.Checked = (_activeTool = DrawingTool.Pointer)
-        _btnHighlighter.Checked = (_activeTool = DrawingTool.Highlighter)
+    Private Sub OnColorClick(sender As Object, e As EventArgs)
+        Using dlg As New ColorDialog() With {
+            .Color = _settings.BaseColor,
+            .FullOpen = True,
+            .AnyColor = True
+        }
+            If dlg.ShowDialog(FindForm()) = DialogResult.OK Then
+                _settings.BaseColor = dlg.Color
+                UpdateColorSwatch()
+                ' Color pick implies user wants to draw
+                _modeIsPointer = False
+                _btnPointer.Checked = False
+                RaiseSettingsChanged()
+            End If
+        End Using
     End Sub
+
+    Private Sub OnOpacityChanged(sender As Object, e As EventArgs)
+        If _suppressEvents Then Return
+        Dim idx = _cmbOpacity.SelectedIndex
+        If idx >= 0 AndAlso idx < OpacityChoices.Length Then
+            _settings.OpacityPercent = OpacityChoices(idx)
+            RaiseSettingsChanged()
+        End If
+    End Sub
+
+    Private Sub OnThicknessChanged(sender As Object, e As EventArgs)
+        If _suppressEvents Then Return
+        Dim idx = _cmbThickness.SelectedIndex
+        If idx >= 0 AndAlso idx < ThicknessChoices.Length Then
+            _settings.Thickness = ThicknessChoices(idx)
+            RaiseSettingsChanged()
+        End If
+    End Sub
+
+    Private Sub UpdateColorSwatch()
+        Dim c = _settings.StrokeColor
+        ' Solid swatch of base color; opacity shown separately
+        _btnColor.BackColor = _settings.BaseColor
+        _btnColor.ForeColor = _settings.BaseColor
+        _btnColor.Text = "■■"
+    End Sub
+
+    Private Sub SelectOpacity(percent As Integer)
+        _suppressEvents = True
+        Try
+            Dim best = 0
+            Dim bestDiff = Integer.MaxValue
+            For i = 0 To OpacityChoices.Length - 1
+                Dim d = Math.Abs(OpacityChoices(i) - percent)
+                If d < bestDiff Then
+                    bestDiff = d
+                    best = i
+                End If
+            Next
+            _cmbOpacity.SelectedIndex = best
+            _settings.OpacityPercent = OpacityChoices(best)
+        Finally
+            _suppressEvents = False
+        End Try
+    End Sub
+
+    Private Sub SelectThickness(thickness As Single)
+        _suppressEvents = True
+        Try
+            Dim best = 0
+            Dim bestDiff = Single.MaxValue
+            For i = 0 To ThicknessChoices.Length - 1
+                Dim d = Math.Abs(ThicknessChoices(i) - thickness)
+                If d < bestDiff Then
+                    bestDiff = d
+                    best = i
+                End If
+            Next
+            _cmbThickness.SelectedIndex = best
+            _settings.Thickness = ThicknessChoices(best)
+        Finally
+            _suppressEvents = False
+        End Try
+    End Sub
+
+    Private Shared Function ToolFromComboIndex(index As Integer) As DrawingTool
+        Select Case index
+            Case 1 : Return DrawingTool.Pen
+            Case Else : Return DrawingTool.Highlighter
+        End Select
+    End Function
 End Class

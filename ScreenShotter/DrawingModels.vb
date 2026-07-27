@@ -6,6 +6,8 @@ Public Enum DrawingTool
     Pointer = 0
     ''' <summary>Semi-transparent freehand highlight on a screenshot.</summary>
     Highlighter = 1
+    ''' <summary>Freehand pen (uses opacity from settings; often more opaque).</summary>
+    Pen = 2
 End Enum
 
 ''' <summary>
@@ -34,20 +36,112 @@ Public Class InkStroke
 End Class
 
 ''' <summary>
-''' Pure helpers for highlighter defaults and image-normalized stroke coordinates.
+''' Live ink settings from the drawing toolbar (shared per tab via the canvas).
 ''' </summary>
-Public Module DrawingHelper
-    Public ReadOnly Property HighlighterColor As Color
+Public Class DrawingSettings
+    Private _opacityPercent As Integer = 43
+    Private _thickness As Single = 28.0F
+    Private _baseColor As Color = Color.FromArgb(255, 255, 230, 0)
+    Private _tool As DrawingTool = DrawingTool.Highlighter
+
+    Public Property Tool As DrawingTool
         Get
-            ' Translucent yellow/gold
-            Return Color.FromArgb(110, 255, 230, 0)
+            Return _tool
+        End Get
+        Set(value As DrawingTool)
+            If value = DrawingTool.Pointer Then
+                _tool = DrawingTool.Highlighter
+            Else
+                _tool = value
+            End If
+        End Set
+    End Property
+
+    ''' <summary>RGB base color (alpha ignored; use OpacityPercent).</summary>
+    Public Property BaseColor As Color
+        Get
+            Return Color.FromArgb(255, _baseColor)
+        End Get
+        Set(value As Color)
+            _baseColor = Color.FromArgb(255, value)
+        End Set
+    End Property
+
+    ''' <summary>0–100% ink opacity.</summary>
+    Public Property OpacityPercent As Integer
+        Get
+            Return _opacityPercent
+        End Get
+        Set(value As Integer)
+            _opacityPercent = DrawingHelper.ClampOpacityPercent(value)
+        End Set
+    End Property
+
+    ''' <summary>Stroke width in natural image pixels.</summary>
+    Public Property Thickness As Single
+        Get
+            Return _thickness
+        End Get
+        Set(value As Single)
+            _thickness = DrawingHelper.ClampThickness(value)
+        End Set
+    End Property
+
+    Public ReadOnly Property StrokeColor As Color
+        Get
+            Dim a = CInt(Math.Round(_opacityPercent / 100.0 * 255.0))
+            a = Math.Max(0, Math.Min(255, a))
+            Return Color.FromArgb(a, _baseColor)
         End Get
     End Property
 
-    Public Const HighlighterNativeWidth As Single = 28.0F
+    Public Function CreateStroke() As InkStroke
+        Dim tool = If(_tool = DrawingTool.Pointer, DrawingTool.Highlighter, _tool)
+        Return New InkStroke(tool, StrokeColor, _thickness)
+    End Function
+End Class
 
-    Public Function CreateHighlighterStroke() As InkStroke
-        Return New InkStroke(DrawingTool.Highlighter, HighlighterColor, HighlighterNativeWidth)
+''' <summary>
+''' Pure helpers for drawing defaults and image-normalized stroke coordinates.
+''' </summary>
+Public Module DrawingHelper
+    Public ReadOnly Property DefaultHighlighterBaseColor As Color
+        Get
+            Return Color.FromArgb(255, 255, 230, 0)
+        End Get
+    End Property
+
+    Public Const DefaultOpacityPercent As Integer = 43
+    Public Const DefaultThickness As Single = 28.0F
+    Public Const MinThickness As Single = 2.0F
+    Public Const MaxThickness As Single = 96.0F
+
+    Public Function IsInkTool(tool As DrawingTool) As Boolean
+        Return tool = DrawingTool.Highlighter OrElse tool = DrawingTool.Pen
+    End Function
+
+    Public Function ClampOpacityPercent(value As Integer) As Integer
+        Return Math.Max(0, Math.Min(100, value))
+    End Function
+
+    Public Function ClampThickness(value As Single) As Single
+        If Single.IsNaN(value) OrElse Single.IsInfinity(value) Then Return DefaultThickness
+        Return Math.Max(MinThickness, Math.Min(MaxThickness, value))
+    End Function
+
+    Public Function ColorWithOpacity(baseColor As Color, opacityPercent As Integer) As Color
+        Dim pct = ClampOpacityPercent(opacityPercent)
+        Dim a = CInt(Math.Round(pct / 100.0 * 255.0))
+        Return Color.FromArgb(Math.Max(0, Math.Min(255, a)), baseColor)
+    End Function
+
+    Public Function ToolDisplayName(tool As DrawingTool) As String
+        Select Case tool
+            Case DrawingTool.Highlighter : Return "Highlighter"
+            Case DrawingTool.Pen : Return "Pen"
+            Case DrawingTool.Pointer : Return "Pointer"
+            Case Else : Return tool.ToString()
+        End Select
     End Function
 
     ''' <summary>

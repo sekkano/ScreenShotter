@@ -10,7 +10,6 @@ public class DrawingHelperTests
     {
         var frame = new Size(200, 100);
         var pan = new Point(0, 0);
-        // zoom 1 → content = frame
         var norm = DrawingHelper.ViewportToNormalized(new Point(100, 50), frame, pan, 1.0);
         Assert.NotNull(norm);
         Assert.Equal(0.5f, norm!.Value.X, 3);
@@ -21,7 +20,6 @@ public class DrawingHelperTests
     public void ViewportToNormalized_OutsideImage_ReturnsNull()
     {
         var frame = new Size(100, 100);
-        // pan leaves empty margins when zoomed out? at zoom 1 content fills frame
         var miss = DrawingHelper.ViewportToNormalized(new Point(-5, 10), frame, Point.Empty, 1.0);
         Assert.Null(miss);
     }
@@ -39,12 +37,46 @@ public class DrawingHelperTests
     }
 
     [Fact]
-    public void CreateHighlighterStroke_HasTranslucentYellow()
+    public void DrawingSettings_CreateStroke_UsesColorOpacityThickness()
     {
-        var stroke = DrawingHelper.CreateHighlighterStroke();
+        var settings = new DrawingSettings
+        {
+            Tool = DrawingTool.Highlighter,
+            BaseColor = Color.FromArgb(255, 0, 128, 255),
+            OpacityPercent = 50,
+            Thickness = 20
+        };
+        var stroke = settings.CreateStroke();
         Assert.Equal(DrawingTool.Highlighter, stroke.Tool);
-        Assert.True(stroke.Color.A < 255);
-        Assert.True(stroke.NativeWidth >= 1);
+        Assert.Equal(20f, stroke.NativeWidth);
+        Assert.Equal(128, stroke.Color.A); // 50% of 255
+        Assert.Equal(0, stroke.Color.R);
+        Assert.Equal(128, stroke.Color.G);
+        Assert.Equal(255, stroke.Color.B);
+    }
+
+    [Fact]
+    public void ColorWithOpacity_ClampsAndAppliesAlpha()
+    {
+        var c = DrawingHelper.ColorWithOpacity(Color.Red, 25);
+        Assert.Equal(64, c.A); // ~0.25 * 255
+        Assert.Equal(255, c.R);
+    }
+
+    [Fact]
+    public void IsInkTool_OnlyDrawTools()
+    {
+        Assert.False(DrawingHelper.IsInkTool(DrawingTool.Pointer));
+        Assert.True(DrawingHelper.IsInkTool(DrawingTool.Highlighter));
+        Assert.True(DrawingHelper.IsInkTool(DrawingTool.Pen));
+    }
+
+    [Fact]
+    public void ClampThickness_EnforcesRange()
+    {
+        Assert.Equal(DrawingHelper.MinThickness, DrawingHelper.ClampThickness(0));
+        Assert.Equal(DrawingHelper.MaxThickness, DrawingHelper.ClampThickness(500));
+        Assert.Equal(28f, DrawingHelper.ClampThickness(28));
     }
 
     [Fact]

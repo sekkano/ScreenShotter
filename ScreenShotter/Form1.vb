@@ -106,12 +106,7 @@
         AddHandler canvas.TransformChanged, AddressOf OnCanvasTransformChanged
 
         Dim drawStrip As New DrawingToolStrip()
-        AddHandler drawStrip.ActiveToolChanged,
-            Sub(sender As Object, e As EventArgs)
-                Dim strip = TryCast(sender, DrawingToolStrip)
-                If strip IsNot Nothing Then canvas.ActiveTool = strip.ActiveTool
-                UpdateStatus()
-            End Sub
+        WireDrawingStrip(drawStrip, canvas)
 
         ' Dock: Fill first, then Top so the drawing bar sits under tab headers
         page.Controls.Add(canvas)
@@ -119,6 +114,19 @@
         tabControl.TabPages.Add(page)
         tabControl.SelectedTab = page
         UpdateStatus()
+    End Sub
+
+    Private Sub WireDrawingStrip(drawStrip As DrawingToolStrip, canvas As ScreenshotCanvas)
+        AddHandler drawStrip.SettingsChanged,
+            Sub(sender As Object, e As EventArgs)
+                Dim strip = TryCast(sender, DrawingToolStrip)
+                If strip IsNot Nothing Then
+                    canvas.ApplyDrawingSettings(strip.ActiveTool, strip.Settings)
+                End If
+                UpdateStatus()
+            End Sub
+        ' Initial sync
+        canvas.ApplyDrawingSettings(drawStrip.ActiveTool, drawStrip.Settings)
     End Sub
 
     ''' <summary>
@@ -169,12 +177,7 @@
             AddHandler canvas.TransformChanged, AddressOf OnCanvasTransformChanged
 
             Dim drawStrip As New DrawingToolStrip()
-            AddHandler drawStrip.ActiveToolChanged,
-                Sub(sender As Object, e As EventArgs)
-                    Dim strip = TryCast(sender, DrawingToolStrip)
-                    If strip IsNot Nothing Then canvas.ActiveTool = strip.ActiveTool
-                    UpdateStatus()
-                End Sub
+            WireDrawingStrip(drawStrip, canvas)
 
             page.Controls.Add(canvas)
             page.Controls.Add(drawStrip)
@@ -328,15 +331,20 @@
         If box IsNot Nothing Then
             Dim nat = box.NaturalSize
             Dim zoomTxt = ZoomHelper.FormatZoomPercent(box.Zoom)
-            Dim tool = If(canvas IsNot Nothing, canvas.ActiveTool.ToString(), "Pointer")
+            Dim tool = If(canvas IsNot Nothing, DrawingHelper.ToolDisplayName(canvas.ActiveTool), "Pointer")
+            Dim ink = ""
+            If canvas IsNot Nothing AndAlso DrawingHelper.IsInkTool(canvas.ActiveTool) Then
+                Dim s = canvas.DrawingSettings
+                ink = $" · {s.OpacityPercent}% · {CInt(s.Thickness)}px"
+            End If
             statusLabel.Text =
-                $"{tabName}: {count} · {nat.Width}×{nat.Height} · zoom {zoomTxt} · tool {tool} — " &
-                "Highlighter draws · Ctrl+drag moves · Pointer moves · Save / Del"
+                $"{tabName}: {count} · zoom {zoomTxt} · {tool}{ink} — " &
+                "Draw tools / color / opacity / size under tabs · Ctrl+drag moves · Save / Del"
             btnZoomReset.Text = zoomTxt
         Else
-            Dim tool = If(canvas IsNot Nothing, canvas.ActiveTool.ToString(), "Pointer")
+            Dim tool = If(canvas IsNot Nothing, DrawingHelper.ToolDisplayName(canvas.ActiveTool), "Pointer")
             statusLabel.Text =
-                $"{tabName}: {count} screenshot(s) · tool {tool} — New Screenshot · Highlighter on the bar under the tabs"
+                $"{tabName}: {count} screenshot(s) · {tool} — drawing bar under tabs: tool, color, opacity, size"
             btnZoomReset.Text = "100%"
         End If
     End Sub

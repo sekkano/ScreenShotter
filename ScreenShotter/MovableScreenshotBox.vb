@@ -392,14 +392,14 @@ Public Class MovableScreenshotBox
                 _aspectReference = Size
                 Capture = True
             ElseIf ctrlHeld Then
-                ' Ctrl+drag always moves (works while Highlighter is active)
+                ' Ctrl+drag always moves (works while a draw tool is active)
                 BeginMove(e.Location)
             ElseIf shiftHeld Then
                 _mode = InteractMode.Pan
                 _panStartCursor = PointToScreen(e.Location)
                 _panStart = _pan
                 Capture = True
-            ElseIf _canvas.ActiveTool = DrawingTool.Highlighter Then
+            ElseIf DrawingHelper.IsInkTool(_canvas.ActiveTool) Then
                 BeginDraw(e.Location)
             Else
                 BeginMove(e.Location)
@@ -422,7 +422,7 @@ Public Class MovableScreenshotBox
 
     Private Sub BeginDraw(local As Point)
         _mode = InteractMode.Draw
-        _activeStroke = DrawingHelper.CreateHighlighterStroke()
+        _activeStroke = _canvas.DrawingSettings.CreateStroke()
         Dim norm = DrawingHelper.ViewportToNormalized(local, Size, _pan, _zoom)
         If norm.HasValue Then
             _activeStroke.Points.Add(DrawingHelper.ClampNormalized(norm.Value))
@@ -659,7 +659,7 @@ Public Class MovableScreenshotBox
             Dim edge = HitTestEdge(local.Value)
             If edge <> ResizeEdge.None Then Return CursorForEdge(edge)
         End If
-        If _canvas IsNot Nothing AndAlso _canvas.ActiveTool = DrawingTool.Highlighter Then
+        If _canvas IsNot Nothing AndAlso DrawingHelper.IsInkTool(_canvas.ActiveTool) Then
             Return Cursors.Cross
         End If
         Return Cursors.SizeAll

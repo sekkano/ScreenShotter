@@ -10,6 +10,7 @@ Public Class ScreenshotCanvas
     Private _selectedId As Guid = Guid.Empty
     Private _scrollUpdatePending As Boolean
     Private _activeTool As DrawingTool = DrawingTool.Pointer
+    Private ReadOnly _drawingSettings As New DrawingSettings()
 
     Public Sub New(session As TabSession)
         _session = session
@@ -29,7 +30,7 @@ Public Class ScreenshotCanvas
     End Sub
 
     ''' <summary>
-    ''' Current annotation tool for this tab (Pointer = move/resize, Highlighter = ink).
+    ''' Current tool for this tab (Pointer = move/resize; Highlighter/Pen = ink).
     ''' </summary>
     <System.ComponentModel.Browsable(False)>
     <System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)>
@@ -40,11 +41,38 @@ Public Class ScreenshotCanvas
         Set(value As DrawingTool)
             If _activeTool = value Then Return
             _activeTool = value
+            If DrawingHelper.IsInkTool(value) Then
+                _drawingSettings.Tool = value
+            End If
             For Each box In _boxes.Values
                 box.NotifyToolChanged()
             Next
         End Set
     End Property
+
+    ''' <summary>
+    ''' Color, opacity, and thickness for new strokes on this tab.
+    ''' </summary>
+    <System.ComponentModel.Browsable(False)>
+    <System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)>
+    Public ReadOnly Property DrawingSettings As DrawingSettings
+        Get
+            Return _drawingSettings
+        End Get
+    End Property
+
+    ''' <summary>
+    ''' Applies toolbar settings (tool + ink appearance) to this canvas.
+    ''' </summary>
+    Public Sub ApplyDrawingSettings(tool As DrawingTool, settings As DrawingSettings)
+        If settings IsNot Nothing Then
+            _drawingSettings.Tool = settings.Tool
+            _drawingSettings.BaseColor = settings.BaseColor
+            _drawingSettings.OpacityPercent = settings.OpacityPercent
+            _drawingSettings.Thickness = settings.Thickness
+        End If
+        ActiveTool = tool
+    End Sub
 
     Protected Overrides ReadOnly Property CreateParams As CreateParams
         Get
