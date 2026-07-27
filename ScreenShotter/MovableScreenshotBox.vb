@@ -710,17 +710,15 @@ Public Class MovableScreenshotBox
     End Sub
 
     Protected Overrides Sub OnMouseWheel(e As MouseEventArgs)
-        HandleWheelInput(e.Delta, isHorizontalDevice:=False)
+        HandleVerticalWheel(e.Delta)
         MarkWheelHandled(e)
     End Sub
 
     ''' <summary>
     ''' Wheel routing over a screenshot:
-    ''' - Ctrl (no Shift) → zoom content
-    ''' - Pointer + Shift → horizontal canvas scroll
-    ''' - Draw tool + Ctrl+Shift → horizontal canvas scroll
-    ''' - Draw tool + Shift only → no scroll (Shift reserved for horizontal draw)
-    ''' - No modifiers → vertical canvas scroll
+    ''' - Vertical wheel (up/down): Ctrl → zoom, otherwise vertical canvas scroll
+    ''' - Horizontal side-tilt wheel only → horizontal canvas scroll (or pan if zoomed)
+    ''' Shift does not change scroll axis (Shift is for horizontal drawing with the mouse).
     ''' </summary>
     Protected Overrides Sub WndProc(ByRef m As Message)
         Const WM_MOUSEWHEEL As Integer = &H20A
@@ -728,14 +726,14 @@ Public Class MovableScreenshotBox
 
         If m.Msg = WM_MOUSEWHEEL Then
             Dim delta = WheelScrollHelper.DeltaFromWParam(m.WParam)
-            HandleWheelInput(delta, isHorizontalDevice:=False)
+            HandleVerticalWheel(delta)
             m.Result = New IntPtr(1)
             Return
         End If
 
         If m.Msg = WM_MOUSEHWHEEL Then
             Dim delta = WheelScrollHelper.DeltaFromWParam(m.WParam)
-            HandleWheelInput(delta, isHorizontalDevice:=True)
+            HandleHorizontalWheel(delta)
             m.Result = New IntPtr(1)
             Return
         End If
@@ -749,42 +747,22 @@ Public Class MovableScreenshotBox
         MyBase.WndProc(m)
     End Sub
 
-    Private Sub HandleWheelInput(delta As Integer, isHorizontalDevice As Boolean)
+    Private Sub HandleVerticalWheel(delta As Integer)
         Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
-        Dim shift = (Control.ModifierKeys And Keys.Shift) = Keys.Shift
-        Dim inkTool = DrawingHelper.IsInkTool(_canvas.ActiveTool)
-
-        ' Ctrl alone → zoom (not Ctrl+Shift)
-        If ctrl AndAlso Not shift AndAlso Not isHorizontalDevice Then
+        If ctrl Then
             HandleWheelZoom(delta, Cursor.Position)
-            Return
+        Else
+            ForwardVerticalScrollToCanvas(delta)
         End If
+    End Sub
 
-        ' Horizontal scroll:
-        '  - side-tilt wheel always
-        '  - Shift+wheel in Pointer mode
-        '  - Ctrl+Shift+wheel when a draw tool is selected
-        Dim allowHorizontalScroll =
-            isHorizontalDevice OrElse
-            (shift AndAlso Not inkTool) OrElse
-            (shift AndAlso ctrl AndAlso inkTool)
-
-        If allowHorizontalScroll Then
-            If isHorizontalDevice AndAlso _zoom > 1.001 AndAlso Not shift AndAlso Not ctrl Then
-                HandleWheelPanHorizontal(delta)
-            Else
-                ForwardHorizontalScrollToCanvas(delta)
-            End If
-            Return
+    Private Sub HandleHorizontalWheel(delta As Integer)
+        ' Side-tilt only — never remap vertical wheel to horizontal via Shift
+        If _zoom > 1.001 AndAlso (Control.ModifierKeys And Keys.Control) <> Keys.Control Then
+            HandleWheelPanHorizontal(delta)
+        Else
+            ForwardHorizontalScrollToCanvas(delta)
         End If
-
-        ' Draw tool + Shift (no Ctrl): do not scroll — Shift is for horizontal ink
-        If inkTool AndAlso shift AndAlso Not ctrl Then
-            Return
-        End If
-
-        ' Default: vertical canvas scroll
-        ForwardVerticalScrollToCanvas(delta)
     End Sub
 
     Private Sub ForwardVerticalScrollToCanvas(wheelDelta As Integer)
