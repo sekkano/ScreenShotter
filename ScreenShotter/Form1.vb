@@ -104,7 +104,18 @@
         Dim canvas As New ScreenshotCanvas(session)
         AddHandler canvas.SelectionChanged, AddressOf OnCanvasSelectionChanged
         AddHandler canvas.TransformChanged, AddressOf OnCanvasTransformChanged
+
+        Dim drawStrip As New DrawingToolStrip()
+        AddHandler drawStrip.ActiveToolChanged,
+            Sub(sender As Object, e As EventArgs)
+                Dim strip = TryCast(sender, DrawingToolStrip)
+                If strip IsNot Nothing Then canvas.ActiveTool = strip.ActiveTool
+                UpdateStatus()
+            End Sub
+
+        ' Dock: Fill first, then Top so the drawing bar sits under tab headers
         page.Controls.Add(canvas)
+        page.Controls.Add(drawStrip)
         tabControl.TabPages.Add(page)
         tabControl.SelectedTab = page
         UpdateStatus()
@@ -148,14 +159,25 @@
 
         If tabControl.TabPages.Count <= 1 Then
             Dim page = tabControl.TabPages(0)
+            Dim keptTitle = page.Text
             DisposePageControls(page)
 
             _workspace.RemoveTabAt(0)
-            Dim session = _workspace.AddTab(page.Text)
+            Dim session = _workspace.AddTab(keptTitle)
             Dim canvas As New ScreenshotCanvas(session)
             AddHandler canvas.SelectionChanged, AddressOf OnCanvasSelectionChanged
             AddHandler canvas.TransformChanged, AddressOf OnCanvasTransformChanged
+
+            Dim drawStrip As New DrawingToolStrip()
+            AddHandler drawStrip.ActiveToolChanged,
+                Sub(sender As Object, e As EventArgs)
+                    Dim strip = TryCast(sender, DrawingToolStrip)
+                    If strip IsNot Nothing Then canvas.ActiveTool = strip.ActiveTool
+                    UpdateStatus()
+                End Sub
+
             page.Controls.Add(canvas)
+            page.Controls.Add(drawStrip)
             statusLabel.Text = "Tab cleared (last tab cannot be closed)"
             UpdateStatus()
             Return
@@ -306,13 +328,15 @@
         If box IsNot Nothing Then
             Dim nat = box.NaturalSize
             Dim zoomTxt = ZoomHelper.FormatZoomPercent(box.Zoom)
+            Dim tool = If(canvas IsNot Nothing, canvas.ActiveTool.ToString(), "Pointer")
             statusLabel.Text =
-                $"{tabName}: {count} · {nat.Width}×{nat.Height} native · frame {box.Width}×{box.Height} · zoom {zoomTxt} — " &
-                "Save Tab / Ctrl+S · Del deletes · Ctrl+wheel zoom"
+                $"{tabName}: {count} · {nat.Width}×{nat.Height} · zoom {zoomTxt} · tool {tool} — " &
+                "Highlighter draws · Pointer moves · Save Tab / Del"
             btnZoomReset.Text = zoomTxt
         Else
+            Dim tool = If(canvas IsNot Nothing, canvas.ActiveTool.ToString(), "Pointer")
             statusLabel.Text =
-                $"{tabName}: {count} screenshot(s) — New Screenshot · Save Tab (Ctrl+S) exports the tab as shown"
+                $"{tabName}: {count} screenshot(s) · tool {tool} — New Screenshot · Highlighter on the bar under the tabs"
             btnZoomReset.Text = "100%"
         End If
     End Sub

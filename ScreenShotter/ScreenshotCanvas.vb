@@ -9,6 +9,7 @@ Public Class ScreenshotCanvas
     Private ReadOnly _boxes As New Dictionary(Of Guid, MovableScreenshotBox)()
     Private _selectedId As Guid = Guid.Empty
     Private _scrollUpdatePending As Boolean
+    Private _activeTool As DrawingTool = DrawingTool.Pointer
 
     Public Sub New(session As TabSession)
         _session = session
@@ -26,6 +27,24 @@ Public Class ScreenshotCanvas
         UpdateStyles()
         DoubleBuffered = True
     End Sub
+
+    ''' <summary>
+    ''' Current annotation tool for this tab (Pointer = move/resize, Highlighter = ink).
+    ''' </summary>
+    <System.ComponentModel.Browsable(False)>
+    <System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)>
+    Public Property ActiveTool As DrawingTool
+        Get
+            Return _activeTool
+        End Get
+        Set(value As DrawingTool)
+            If _activeTool = value Then Return
+            _activeTool = value
+            For Each box In _boxes.Values
+                box.NotifyToolChanged()
+            Next
+        End Set
+    End Property
 
     Protected Overrides ReadOnly Property CreateParams As CreateParams
         Get
@@ -66,7 +85,7 @@ Public Class ScreenshotCanvas
 
         _images(item.Id) = image
 
-        Dim box As New MovableScreenshotBox(item.Id, image) With {
+        Dim box As New MovableScreenshotBox(item.Id, image, Me) With {
             .Location = loc
         }
         AddHandler box.PositionChanged, AddressOf OnBoxPositionChanged

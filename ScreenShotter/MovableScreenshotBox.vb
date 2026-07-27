@@ -13,6 +13,7 @@ Public Class MovableScreenshotBox
         Move
         Resize
         Pan
+        Draw
     End Enum
 
     Private Enum ResizeEdge
@@ -30,6 +31,9 @@ Public Class MovableScreenshotBox
     Private ReadOnly _itemId As Guid
     Private ReadOnly _image As Image
     Private ReadOnly _naturalSize As Size
+    Private ReadOnly _canvas As ScreenshotCanvas
+    Private ReadOnly _strokes As New List(Of InkStroke)()
+    Private _activeStroke As InkStroke
     Private _zoom As Double = ZoomHelper.DefaultZoom
     Private _pan As Point = Point.Empty
     Private _mode As InteractMode = InteractMode.None
@@ -114,11 +118,13 @@ Public Class MovableScreenshotBox
     Public Event SelectedChanged As EventHandler
     Public Event InteractionEnded As EventHandler
 
-    Public Sub New(itemId As Guid, image As Image)
+    Public Sub New(itemId As Guid, image As Image, canvas As ScreenshotCanvas)
         If image Is Nothing Then Throw New ArgumentNullException(NameOf(image))
+        If canvas Is Nothing Then Throw New ArgumentNullException(NameOf(canvas))
 
         _itemId = itemId
         _image = image
+        _canvas = canvas
         _naturalSize = image.Size
         _zoom = ZoomHelper.DefaultZoom
         _aspectReference = _naturalSize
@@ -137,6 +143,15 @@ Public Class MovableScreenshotBox
         TabStop = True
         Size = New Size(Math.Max(MinDisplayPx, _naturalSize.Width), Math.Max(MinDisplayPx, _naturalSize.Height))
         RecenterPan()
+    End Sub
+
+    ''' <summary>
+    ''' Called when the canvas tool changes so the cursor updates.
+    ''' </summary>
+    Public Sub NotifyToolChanged()
+        If _mode = InteractMode.None Then
+            Cursor = CursorForIdle()
+        End If
     End Sub
 
     Public Sub ZoomIn()
@@ -220,6 +235,7 @@ Public Class MovableScreenshotBox
                 contentW,
                 contentH)
             g.DrawImage(_image, dest)
+            DrawAllStrokes(g, destFrame, scaleX, scaleY)
         Finally
             g.Restore(state)
         End Try
@@ -279,6 +295,14 @@ Public Class MovableScreenshotBox
         g.CompositingMode = Drawing2D.CompositingMode.SourceOver
         g.DrawImage(_image, dest)
 
+        ' Ink (highlighter etc.) above the image, below selection chrome
+        g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
+        DrawAllStrokes(g, New Rectangle(0, 0, Width, Height), 1.0, 1.0)
+        If _activeStroke IsNot Nothing Then
+            DrawStroke(g, _activeStroke, New Rectangle(0, 0, Width, Height), 1.0, 1.0)
+        End If
+        g.SmoothingMode = Drawing2D.SmoothingMode.None
+
         ' Frame chrome
         If _selected Then
             Using pen As New Pen(Color.FromArgb(255, 0, 120, 215), 2.0F)
@@ -298,6 +322,54 @@ Public Class MovableScreenshotBox
         End If
     End Sub
 
+    Private Sub DrawAllStrokes(g As Graphics, destFrame As Rectangle, scaleX As Double, scaleY As Double)
+        For Each stroke In _strokes
+            DrawStroke(g, stroke, destFrame, scaleX, scaleY)
+        Next
+    End Sub
+
+    Private Sub DrawStroke(g As Graphics, stroke As InkStroke, destFrame As Rectangle, scaleX As Double, scaleY As Double)
+        If stroke Is Nothing OrElse stroke.Points.Count = 0 Then Return
+
+        Dim content = ZoomHelper.ContentSize(Size, _zoom)
+        Dim panX = CInt(Math.Round(_pan.X * scaleX))
+        Dim panY = CInt(Math.Round(_pan.Y * scaleY))
+        Dim contentW = Math.Max(1.0F, CSng(content.Width * scaleX))
+        Dim contentH = Math.Max(1.0F, CSng(content.Height * scaleY))
+        Dim width = DrawingHelper.ViewportStrokeWidth(stroke.NativeWidth, Size, _naturalSize, _zoom) *
+            CSng((scaleX + scaleY) / 2.0)
+
+        Using pen As New Pen(stroke.Color, Math.Max(1.0F, width))
+            pen.StartCap = Drawing2D.LineCap.Round
+            pen.EndCap = Drawing2D.LineCap.Round
+            pen.LineJoin = Drawing2D.LineJoin.Round
+            If stroke.Tool = DrawingTool.Highlighter Then
+                ' Softer mark
+                pen.Color = stroke.Color
+            End If
+
+            If stroke.Points.Count = 1 Then
+                Dim p = stroke.Points(0)
+                Dim pt = New PointF(
+                    destFrame.X + panX + p.X * contentW,
+                    destFrame.Y + panY + p.Y * contentH)
+                Dim r = Math.Max(1.0F, width / 2.0F)
+                Using br As New SolidBrush(stroke.Color)
+                    g.FillEllipse(br, pt.X - r, pt.Y - r, r * 2, r * 2)
+                End Using
+            Else
+                Dim pts(stroke.Points.Count - 1) As PointF
+                For i = 0 To stroke.Points.Count - 1
+                    Dim p = stroke.Points(i)
+                    pts(i) = New PointF(
+                        destFrame.X + panX + p.X * contentW,
+                        destFrame.Y + panY + p.Y * contentH)
+                Next
+                g.DrawLines(pen, pts)
+            End If
+        End Using
+    End Sub
+
     Protected Overrides Sub OnPaintBackground(e As PaintEventArgs)
         ' Fully painted in OnPaint — avoids flicker/ghost trails
     End Sub
@@ -314,19 +386,20 @@ Public Class MovableScreenshotBox
                 _resizeStartCursor = PointToScreen(e.Location)
                 _resizeStartLocation = Location
                 _resizeStartSize = Size
-                ' Aspect lock uses current frame size as reference (diagonal only)
                 _aspectReference = Size
                 Capture = True
-            ElseIf (Control.ModifierKeys And Keys.Shift) = Keys.Shift OrElse _zoom > 1.001 Then
-                ' Shift+drag or zoomed: pan content inside frame; plain drag moves frame when zoom≈1
-                If (Control.ModifierKeys And Keys.Shift) = Keys.Shift Then
-                    _mode = InteractMode.Pan
-                    _panStartCursor = PointToScreen(e.Location)
-                    _panStart = _pan
-                    Capture = True
-                Else
-                    BeginMove(e.Location)
-                End If
+            ElseIf _canvas.ActiveTool = DrawingTool.Highlighter Then
+                BeginDraw(e.Location)
+            ElseIf (Control.ModifierKeys And Keys.Shift) = Keys.Shift Then
+                _mode = InteractMode.Pan
+                _panStartCursor = PointToScreen(e.Location)
+                _panStart = _pan
+                Capture = True
+            ElseIf _zoom > 1.001 AndAlso (Control.ModifierKeys And Keys.Shift) = Keys.Shift Then
+                _mode = InteractMode.Pan
+                _panStartCursor = PointToScreen(e.Location)
+                _panStart = _pan
+                Capture = True
             Else
                 BeginMove(e.Location)
             End If
@@ -346,16 +419,43 @@ Public Class MovableScreenshotBox
         Capture = True
     End Sub
 
+    Private Sub BeginDraw(local As Point)
+        _mode = InteractMode.Draw
+        _activeStroke = DrawingHelper.CreateHighlighterStroke()
+        Dim norm = DrawingHelper.ViewportToNormalized(local, Size, _pan, _zoom)
+        If norm.HasValue Then
+            _activeStroke.Points.Add(DrawingHelper.ClampNormalized(norm.Value))
+        End If
+        Capture = True
+        Cursor = Cursors.Cross
+        Invalidate()
+    End Sub
+
     Protected Overrides Sub OnMouseMove(e As MouseEventArgs)
         MyBase.OnMouseMove(e)
 
         If _mode = InteractMode.None Then
-            Dim edge = HitTestEdge(e.Location)
-            Cursor = CursorForEdge(edge)
+            Cursor = CursorForIdle(e.Location)
             Return
         End If
 
         Dim screenCursor = PointToScreen(e.Location)
+
+        If _mode = InteractMode.Draw Then
+            Dim norm = DrawingHelper.ViewportToNormalized(e.Location, Size, _pan, _zoom)
+            If norm.HasValue AndAlso _activeStroke IsNot Nothing Then
+                Dim p = DrawingHelper.ClampNormalized(norm.Value)
+                Dim last = If(_activeStroke.Points.Count > 0, _activeStroke.Points(_activeStroke.Points.Count - 1), p)
+                ' Skip tiny moves to keep stroke lists reasonable
+                Dim dx = p.X - last.X
+                Dim dy = p.Y - last.Y
+                If _activeStroke.Points.Count = 0 OrElse (dx * dx + dy * dy) > 0.00000025F Then
+                    _activeStroke.Points.Add(p)
+                    Invalidate()
+                End If
+            End If
+            Return
+        End If
 
         If _mode = InteractMode.Move Then
             Dim parentCtrl = Parent
@@ -365,10 +465,8 @@ Public Class MovableScreenshotBox
             newLoc.X = Math.Max(-Width + 40, newLoc.X)
             newLoc.Y = Math.Max(-Height + 40, newLoc.Y)
             If newLoc <> Location Then
-                ' SetBoundsCore path — single move, no layout storm
                 SetBounds(newLoc.X, newLoc.Y, Width, Height, BoundsSpecified.Location)
             End If
-            ' Defer PositionChanged until mouse up (reduces ghosting from parent scroll work)
 
         ElseIf _mode = InteractMode.Pan Then
             Dim dx = screenCursor.X - _panStartCursor.X
@@ -399,11 +497,9 @@ Public Class MovableScreenshotBox
             Dim cornerDrag = IsCornerResize(_resizeEdge)
             Dim display As Size
             If cornerDrag Then
-                ' Diagonal: preserve aspect of the frame at drag start
                 display = ZoomHelper.AspectPreserveSize(_aspectReference, tentative)
                 display = ZoomHelper.FreeResizeSize(display, MinDisplayPx)
             Else
-                ' Edges: free stretch (independent width/height)
                 display = ZoomHelper.FreeResizeSize(tentative, MinDisplayPx)
             End If
 
@@ -418,7 +514,6 @@ Public Class MovableScreenshotBox
             End Select
 
             SetBounds(newLoc.X, newLoc.Y, display.Width, display.Height, BoundsSpecified.All)
-            ' Keep zoom; re-clamp pan to new viewport
             Dim content = ZoomHelper.ContentSize(Size, _zoom)
             _pan = ZoomHelper.ClampPan(_pan, content, Size)
             Invalidate()
@@ -535,9 +630,18 @@ Public Class MovableScreenshotBox
         If _mode = InteractMode.None Then Return
         Dim wasMove = _mode = InteractMode.Move
         Dim wasResize = _mode = InteractMode.Resize
+        Dim wasDraw = _mode = InteractMode.Draw
         _mode = InteractMode.None
         _resizeEdge = ResizeEdge.None
         Capture = False
+
+        If wasDraw AndAlso _activeStroke IsNot Nothing Then
+            If _activeStroke.Points.Count >= 1 Then
+                _strokes.Add(_activeStroke)
+            End If
+            _activeStroke = Nothing
+            Invalidate()
+        End If
 
         If wasMove Then
             RaisePosition()
@@ -545,8 +649,20 @@ Public Class MovableScreenshotBox
         If wasResize Then
             RaiseTransform()
         End If
+        Cursor = CursorForIdle()
         RaiseEvent InteractionEnded(Me, EventArgs.Empty)
     End Sub
+
+    Private Function CursorForIdle(Optional local As Point? = Nothing) As Cursor
+        If local.HasValue Then
+            Dim edge = HitTestEdge(local.Value)
+            If edge <> ResizeEdge.None Then Return CursorForEdge(edge)
+        End If
+        If _canvas IsNot Nothing AndAlso _canvas.ActiveTool = DrawingTool.Highlighter Then
+            Return Cursors.Cross
+        End If
+        Return Cursors.SizeAll
+    End Function
 
     Private Sub SelectMe()
         If _selected Then Return
