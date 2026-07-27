@@ -6,6 +6,7 @@ Public Class DrawingToolStrip
     Inherits ClickThroughToolStrip
 
     Private ReadOnly _btnPointer As ToolStripButton
+    Private ReadOnly _btnDraw As ToolStripButton
     Private ReadOnly _cmbTool As ToolStripComboBox
     Private ReadOnly _btnColor As ToolStripButton
     Private ReadOnly _cmbOpacity As ToolStripComboBox
@@ -27,10 +28,16 @@ Public Class DrawingToolStrip
         BackColor = Color.FromArgb(250, 250, 252)
 
         _btnPointer = New ToolStripButton("Pointer") With {
-            .CheckOnClick = True,
+            .CheckOnClick = False,
             .Checked = True,
             .DisplayStyle = ToolStripItemDisplayStyle.Text,
             .ToolTipText = "Select and move screenshots (or use Ctrl+drag while drawing)"
+        }
+        _btnDraw = New ToolStripButton("Draw") With {
+            .CheckOnClick = False,
+            .Checked = False,
+            .DisplayStyle = ToolStripItemDisplayStyle.Text,
+            .ToolTipText = "Draw with the selected tool (Highlighter / Pen)"
         }
 
         _cmbTool = New ToolStripComboBox("cmbTool") With {
@@ -76,8 +83,8 @@ Public Class DrawingToolStrip
         SelectThickness(DrawingHelper.DefaultThickness)
 
         Items.Add(_btnPointer)
+        Items.Add(_btnDraw)
         Items.Add(New ToolStripSeparator())
-        Items.Add(New ToolStripLabel("Draw:") With {.ForeColor = Color.DimGray})
         Items.Add(_cmbTool)
         Items.Add(New ToolStripLabel("Color:") With {.ForeColor = Color.DimGray})
         Items.Add(_btnColor)
@@ -87,24 +94,39 @@ Public Class DrawingToolStrip
         Items.Add(_cmbThickness)
 
         AddHandler _btnPointer.Click, AddressOf OnPointerClick
+        AddHandler _btnDraw.Click, AddressOf OnDrawClick
         AddHandler _cmbTool.SelectedIndexChanged, AddressOf OnToolChanged
         AddHandler _btnColor.Click, AddressOf OnColorClick
         AddHandler _cmbOpacity.SelectedIndexChanged, AddressOf OnOpacityChanged
         AddHandler _cmbThickness.SelectedIndexChanged, AddressOf OnThicknessChanged
-        ' Opening or focusing the draw list switches into draw mode (even if tool unchanged)
+        ' Opening draw-related controls also enters draw mode
         AddHandler _cmbTool.DropDown, AddressOf OnDrawUiActivated
         AddHandler _cmbTool.Click, AddressOf OnDrawUiActivated
         AddHandler _cmbOpacity.DropDown, AddressOf OnDrawUiActivated
         AddHandler _cmbThickness.DropDown, AddressOf OnDrawUiActivated
     End Sub
 
+    Private Sub OnDrawClick(sender As Object, e As EventArgs)
+        EnterDrawMode()
+    End Sub
+
     Private Sub OnDrawUiActivated(sender As Object, e As EventArgs)
         If _suppressEvents Then Return
-        If _modeIsPointer Then
-            _modeIsPointer = False
-            _btnPointer.Checked = False
-            RaiseSettingsChanged()
-        End If
+        EnterDrawMode()
+    End Sub
+
+    Private Sub EnterDrawMode()
+        Dim tool = ToolFromComboIndex(_cmbTool.SelectedIndex)
+        _settings.SelectTool(tool)
+        SyncAppearanceControlsFromSettings()
+        _modeIsPointer = False
+        SyncModeButtons()
+        RaiseSettingsChanged()
+    End Sub
+
+    Private Sub SyncModeButtons()
+        _btnPointer.Checked = _modeIsPointer
+        _btnDraw.Checked = Not _modeIsPointer
     End Sub
 
     ''' <summary>Current tool for the canvas: Pointer or a draw tool.</summary>
@@ -131,7 +153,7 @@ Public Class DrawingToolStrip
 
     Private Sub OnPointerClick(sender As Object, e As EventArgs)
         _modeIsPointer = True
-        _btnPointer.Checked = True
+        SyncModeButtons()
         RaiseSettingsChanged()
     End Sub
 
@@ -141,10 +163,7 @@ Public Class DrawingToolStrip
         ' Switch tool only — restore that tool's last color/opacity/size
         _settings.SelectTool(tool)
         SyncAppearanceControlsFromSettings()
-        ' Selecting a drawing tool switches out of pure Pointer mode
-        _modeIsPointer = False
-        _btnPointer.Checked = False
-        RaiseSettingsChanged()
+        EnterDrawMode()
     End Sub
 
     Private Sub SyncAppearanceControlsFromSettings()
@@ -167,10 +186,7 @@ Public Class DrawingToolStrip
             If dlg.ShowDialog(FindForm()) = DialogResult.OK Then
                 _settings.BaseColor = dlg.Color
                 UpdateColorSwatch()
-                ' Color pick implies user wants to draw
-                _modeIsPointer = False
-                _btnPointer.Checked = False
-                RaiseSettingsChanged()
+                EnterDrawMode()
             End If
         End Using
     End Sub
@@ -180,7 +196,7 @@ Public Class DrawingToolStrip
         Dim idx = _cmbOpacity.SelectedIndex
         If idx >= 0 AndAlso idx < OpacityChoices.Length Then
             _settings.OpacityPercent = OpacityChoices(idx)
-            RaiseSettingsChanged()
+            EnterDrawMode()
         End If
     End Sub
 
@@ -189,7 +205,7 @@ Public Class DrawingToolStrip
         Dim idx = _cmbThickness.SelectedIndex
         If idx >= 0 AndAlso idx < ThicknessChoices.Length Then
             _settings.Thickness = ThicknessChoices(idx)
-            RaiseSettingsChanged()
+            EnterDrawMode()
         End If
     End Sub
 
