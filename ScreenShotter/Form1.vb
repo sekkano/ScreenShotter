@@ -7,9 +7,33 @@
         statusStrip.Dock = DockStyle.Bottom
         tabControl.Dock = DockStyle.Fill
         KeyPreview = True
+        ApplyApplicationIcon()
 
         CreateNewTab()
         UpdateStatus()
+    End Sub
+
+    ''' <summary>
+    ''' Uses the embedded application icon for the window title bar / taskbar.
+    ''' </summary>
+    Private Sub ApplyApplicationIcon()
+        Try
+            Dim exePath = Application.ExecutablePath
+            If Not String.IsNullOrEmpty(exePath) AndAlso IO.File.Exists(exePath) Then
+                Dim extracted = Icon.ExtractAssociatedIcon(exePath)
+                If extracted IsNot Nothing Then
+                    Me.Icon = extracted
+                    Return
+                End If
+            End If
+            ' Design-time / fallback: load app.ico next to the project output
+            Dim icoBeside = IO.Path.Combine(Application.StartupPath, "app.ico")
+            If IO.File.Exists(icoBeside) Then
+                Me.Icon = New Icon(icoBeside)
+            End If
+        Catch
+            ' Non-fatal if icon cannot be loaded
+        End Try
     End Sub
 
     ''' <summary>

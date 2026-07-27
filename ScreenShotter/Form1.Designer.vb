@@ -164,6 +164,7 @@ Partial Class frmScreenShotter
         Name = "frmScreenShotter"
         StartPosition = FormStartPosition.CenterScreen
         Text = "Screen Shotter"
+        ' Icon is applied at runtime from ApplicationIcon (app.ico)
         toolStrip.ResumeLayout(False)
         toolStrip.PerformLayout()
         statusStrip.ResumeLayout(False)

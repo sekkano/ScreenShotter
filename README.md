@@ -223,5 +223,7 @@ dotnet test ScreenShotter.sln -c Debug
 | Path | Role |
 |------|------|
 | `ScreenShotter/` | WinForms app (VB.NET, `net9.0-windows`) |
+| `ScreenShotter/app.ico` | Application icon (exe + window) |
+| `ScreenShotter/Assets/app-icon.png` | Source PNG for the icon |
 | `ScreenShotter.Tests/` | Unit tests |
 | `.gitignore` | Ignores build output, `.vs`, publish profiles, etc. |
