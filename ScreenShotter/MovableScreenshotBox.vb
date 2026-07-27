@@ -380,6 +380,9 @@ Public Class MovableScreenshotBox
             SelectMe()
             BringToFront()
             Dim edge = HitTestEdge(e.Location)
+            Dim ctrlHeld = (Control.ModifierKeys And Keys.Control) = Keys.Control
+            Dim shiftHeld = (Control.ModifierKeys And Keys.Shift) = Keys.Shift
+
             If edge <> ResizeEdge.None Then
                 _mode = InteractMode.Resize
                 _resizeEdge = edge
@@ -388,18 +391,16 @@ Public Class MovableScreenshotBox
                 _resizeStartSize = Size
                 _aspectReference = Size
                 Capture = True
+            ElseIf ctrlHeld Then
+                ' Ctrl+drag always moves (works while Highlighter is active)
+                BeginMove(e.Location)
+            ElseIf shiftHeld Then
+                _mode = InteractMode.Pan
+                _panStartCursor = PointToScreen(e.Location)
+                _panStart = _pan
+                Capture = True
             ElseIf _canvas.ActiveTool = DrawingTool.Highlighter Then
                 BeginDraw(e.Location)
-            ElseIf (Control.ModifierKeys And Keys.Shift) = Keys.Shift Then
-                _mode = InteractMode.Pan
-                _panStartCursor = PointToScreen(e.Location)
-                _panStart = _pan
-                Capture = True
-            ElseIf _zoom > 1.001 AndAlso (Control.ModifierKeys And Keys.Shift) = Keys.Shift Then
-                _mode = InteractMode.Pan
-                _panStartCursor = PointToScreen(e.Location)
-                _panStart = _pan
-                Capture = True
             Else
                 BeginMove(e.Location)
             End If

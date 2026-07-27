@@ -331,7 +331,7 @@
             Dim tool = If(canvas IsNot Nothing, canvas.ActiveTool.ToString(), "Pointer")
             statusLabel.Text =
                 $"{tabName}: {count} · {nat.Width}×{nat.Height} · zoom {zoomTxt} · tool {tool} — " &
-                "Highlighter draws · Pointer moves · Save Tab / Del"
+                "Highlighter draws · Ctrl+drag moves · Pointer moves · Save / Del"
             btnZoomReset.Text = zoomTxt
         Else
             Dim tool = If(canvas IsNot Nothing, canvas.ActiveTool.ToString(), "Pointer")

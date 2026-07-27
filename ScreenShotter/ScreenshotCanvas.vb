@@ -79,8 +79,8 @@ Public Class ScreenshotCanvas
     Public Function AddScreenshotImage(image As Image, Optional location As Point? = Nothing) As ScreenshotItem
         If image Is Nothing Then Throw New ArgumentNullException(NameOf(image))
 
-        Dim loc = If(location, ComputeCascadeLocation())
         Dim size = image.Size
+        Dim loc = If(location, ComputeNextPlacement(size))
         Dim item = _session.AddScreenshot(loc, size)
 
         _images(item.Id) = image
@@ -237,11 +237,22 @@ Public Class ScreenshotCanvas
         Return True
     End Function
 
-    Private Function ComputeCascadeLocation() As Point
-        Const offset = 24
-        Dim n = _session.Items.Count
+    ''' <summary>
+    ''' Places a new screenshot to the right of the previous one, or on a new row below.
+    ''' </summary>
+    Private Function ComputeNextPlacement(newSize As Size) As Point
         Dim origin = New Point(-AutoScrollPosition.X, -AutoScrollPosition.Y)
-        Return New Point(origin.X + 20 + (n * offset) Mod 200, origin.Y + 20 + (n * offset) Mod 160)
+        Dim frames As New List(Of Rectangle)()
+        ' Use live control bounds (current size/position), in add order via session when possible
+        For Each item In _session.Items
+            Dim box As MovableScreenshotBox = Nothing
+            If _boxes.TryGetValue(item.Id, box) Then
+                frames.Add(box.Bounds)
+            Else
+                frames.Add(New Rectangle(item.Location, item.Size))
+            End If
+        Next
+        Return ScreenshotLayoutHelper.PlaceNextScreenshot(frames, newSize, origin)
     End Function
 
     Private Sub OnBoxPositionChanged(sender As Object, e As PositionChangedEventArgs)
