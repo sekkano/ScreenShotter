@@ -363,19 +363,34 @@ Public Class ScreenshotCanvas
 
     Protected Overrides Sub OnMouseWheel(e As MouseEventArgs)
         Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
-        Dim box = If(ctrl, GetScreenshotUnderPointer(), Nothing)
+        Dim shift = (Control.ModifierKeys And Keys.Shift) = Keys.Shift
+        Dim inkTool = DrawingHelper.IsInkTool(ActiveTool)
+        Dim box = GetScreenshotUnderPointer()
 
-        If box IsNot Nothing Then
+        ' Ctrl alone over a screenshot → zoom
+        If ctrl AndAlso Not shift AndAlso box IsNot Nothing Then
             box.HandleWheelZoom(e.Delta, Cursor.Position)
-            Dim handled = TryCast(e, HandledMouseEventArgs)
-            If handled IsNot Nothing Then handled.Handled = True
+            Dim handledZoom = TryCast(e, HandledMouseEventArgs)
+            If handledZoom IsNot Nothing Then handledZoom.Handled = True
             Return
         End If
 
-        If (Control.ModifierKeys And Keys.Shift) = Keys.Shift Then
+        ' Horizontal scroll: Pointer+Shift, or draw-tool+Ctrl+Shift
+        Dim allowHorizontal =
+            (shift AndAlso Not inkTool) OrElse
+            (shift AndAlso ctrl AndAlso inkTool)
+
+        If allowHorizontal Then
             ScrollFromWheel(e.Delta, horizontal:=True)
-            Dim handled = TryCast(e, HandledMouseEventArgs)
-            If handled IsNot Nothing Then handled.Handled = True
+            Dim handledH = TryCast(e, HandledMouseEventArgs)
+            If handledH IsNot Nothing Then handledH.Handled = True
+            Return
+        End If
+
+        ' Draw tool + Shift only: don't scroll (Shift is for horizontal drawing)
+        If inkTool AndAlso shift AndAlso Not ctrl Then
+            Dim handledSkip = TryCast(e, HandledMouseEventArgs)
+            If handledSkip IsNot Nothing Then handledSkip.Handled = True
             Return
         End If
 
@@ -388,21 +403,39 @@ Public Class ScreenshotCanvas
 
         If m.Msg = WM_MOUSEWHEEL Then
             Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
-            If ctrl Then
-                Dim box = GetScreenshotUnderPointer()
-                If box IsNot Nothing Then
-                    Dim delta = WheelScrollHelper.DeltaFromWParam(m.WParam)
-                    box.HandleWheelZoom(delta, Cursor.Position)
-                    m.Result = New IntPtr(1)
-                    Return
-                End If
+            Dim shift = (Control.ModifierKeys And Keys.Shift) = Keys.Shift
+            Dim inkTool = DrawingHelper.IsInkTool(ActiveTool)
+            Dim box = GetScreenshotUnderPointer()
+
+            If ctrl AndAlso Not shift AndAlso box IsNot Nothing Then
+                Dim delta = WheelScrollHelper.DeltaFromWParam(m.WParam)
+                box.HandleWheelZoom(delta, Cursor.Position)
+                m.Result = New IntPtr(1)
+                Return
+            End If
+
+            Dim allowHorizontal =
+                (shift AndAlso Not inkTool) OrElse
+                (shift AndAlso ctrl AndAlso inkTool)
+
+            If allowHorizontal Then
+                Dim delta = WheelScrollHelper.DeltaFromWParam(m.WParam)
+                ScrollFromWheel(delta, horizontal:=True)
+                m.Result = New IntPtr(1)
+                Return
+            End If
+
+            If inkTool AndAlso shift AndAlso Not ctrl Then
+                m.Result = New IntPtr(1)
+                Return
             End If
         End If
 
         If m.Msg = WM_MOUSEHWHEEL Then
             Dim delta = WheelScrollHelper.DeltaFromWParam(m.WParam)
             Dim box = GetScreenshotUnderPointer()
-            If box IsNot Nothing AndAlso box.Zoom > 1.001 Then
+            If box IsNot Nothing AndAlso box.Zoom > 1.001 AndAlso
+               (Control.ModifierKeys And Keys.Shift) <> Keys.Shift Then
                 box.HandleWheelPanHorizontal(delta)
             Else
                 ScrollFromWheel(delta, horizontal:=True)

@@ -101,7 +101,9 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 ### Scroll the canvas
 
 - **Mouse wheel** — vertical scroll (does **not** zoom unless **Ctrl** is held).
-- **Shift + wheel** or **side-tilt wheel** — horizontal scroll.
+- **Pointer mode + Shift + wheel** — horizontal scroll.
+- **Draw mode + Ctrl + Shift + wheel** — horizontal scroll (Shift alone is reserved for horizontal drawing).
+- **Side-tilt wheel** — horizontal scroll.
 - First click on an inactive window both **activates** the app and performs the click (no double-click needed).
 
 ---
