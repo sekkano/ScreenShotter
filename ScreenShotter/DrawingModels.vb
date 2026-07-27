@@ -99,7 +99,36 @@ Public Class DrawingSettings
         Dim tool = If(_tool = DrawingTool.Pointer, DrawingTool.Highlighter, _tool)
         Return New InkStroke(tool, StrokeColor, _thickness)
     End Function
+
+    ''' <summary>
+    ''' Applies default color / opacity / thickness for the selected ink tool.
+    ''' Highlighter = wide translucent yellow; Pen = thin opaque black.
+    ''' </summary>
+    Public Sub ApplyToolPreset(tool As DrawingTool)
+        Dim preset = DrawingHelper.GetToolPreset(tool)
+        Tool = preset.Tool
+        BaseColor = preset.BaseColor
+        OpacityPercent = preset.OpacityPercent
+        Thickness = preset.Thickness
+    End Sub
 End Class
+
+''' <summary>
+''' Default appearance for an ink tool.
+''' </summary>
+Public Structure DrawingToolPreset
+    Public Sub New(tool As DrawingTool, baseColor As Color, opacityPercent As Integer, thickness As Single)
+        Me.Tool = tool
+        Me.BaseColor = baseColor
+        Me.OpacityPercent = opacityPercent
+        Me.Thickness = thickness
+    End Sub
+
+    Public ReadOnly Property Tool As DrawingTool
+    Public ReadOnly Property BaseColor As Color
+    Public ReadOnly Property OpacityPercent As Integer
+    Public ReadOnly Property Thickness As Single
+End Structure
 
 ''' <summary>
 ''' Pure helpers for drawing defaults and image-normalized stroke coordinates.
@@ -111,13 +140,41 @@ Public Module DrawingHelper
         End Get
     End Property
 
+    Public ReadOnly Property DefaultPenBaseColor As Color
+        Get
+            Return Color.FromArgb(255, 20, 20, 20)
+        End Get
+    End Property
+
     Public Const DefaultOpacityPercent As Integer = 43
     Public Const DefaultThickness As Single = 28.0F
+    Public Const DefaultPenOpacityPercent As Integer = 100
+    Public Const DefaultPenThickness As Single = 4.0F
     Public Const MinThickness As Single = 2.0F
     Public Const MaxThickness As Single = 96.0F
 
     Public Function IsInkTool(tool As DrawingTool) As Boolean
         Return tool = DrawingTool.Highlighter OrElse tool = DrawingTool.Pen
+    End Function
+
+    ''' <summary>
+    ''' Distinct defaults: Highlighter is a wide soft translucent mark; Pen is thin solid ink.
+    ''' </summary>
+    Public Function GetToolPreset(tool As DrawingTool) As DrawingToolPreset
+        Select Case tool
+            Case DrawingTool.Pen
+                Return New DrawingToolPreset(
+                    DrawingTool.Pen,
+                    DefaultPenBaseColor,
+                    DefaultPenOpacityPercent,
+                    DefaultPenThickness)
+            Case Else
+                Return New DrawingToolPreset(
+                    DrawingTool.Highlighter,
+                    DefaultHighlighterBaseColor,
+                    DefaultOpacityPercent,
+                    DefaultThickness)
+        End Select
     End Function
 
     Public Function ClampOpacityPercent(value As Integer) As Integer

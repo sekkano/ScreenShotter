@@ -56,6 +56,34 @@ public class DrawingHelperTests
     }
 
     [Fact]
+    public void GetToolPreset_PenDiffersFromHighlighter()
+    {
+        var hi = DrawingHelper.GetToolPreset(DrawingTool.Highlighter);
+        var pen = DrawingHelper.GetToolPreset(DrawingTool.Pen);
+
+        Assert.Equal(DrawingTool.Highlighter, hi.Tool);
+        Assert.Equal(DrawingTool.Pen, pen.Tool);
+        Assert.True(hi.Thickness > pen.Thickness);
+        Assert.True(pen.OpacityPercent > hi.OpacityPercent);
+        Assert.NotEqual(hi.BaseColor.ToArgb(), pen.BaseColor.ToArgb());
+    }
+
+    [Fact]
+    public void ApplyToolPreset_SwitchesBetweenHighlighterAndPen()
+    {
+        var settings = new DrawingSettings();
+        settings.ApplyToolPreset(DrawingTool.Pen);
+        Assert.Equal(DrawingTool.Pen, settings.Tool);
+        Assert.Equal(100, settings.OpacityPercent);
+        Assert.Equal(4f, settings.Thickness);
+
+        settings.ApplyToolPreset(DrawingTool.Highlighter);
+        Assert.Equal(DrawingTool.Highlighter, settings.Tool);
+        Assert.Equal(43, settings.OpacityPercent);
+        Assert.Equal(28f, settings.Thickness);
+    }
+
+    [Fact]
     public void ColorWithOpacity_ClampsAndAppliesAlpha()
     {
         var c = DrawingHelper.ColorWithOpacity(Color.Red, 25);

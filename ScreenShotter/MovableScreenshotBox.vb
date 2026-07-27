@@ -339,35 +339,55 @@ Public Class MovableScreenshotBox
         Dim width = DrawingHelper.ViewportStrokeWidth(stroke.NativeWidth, Size, _naturalSize, _zoom) *
             CSng((scaleX + scaleY) / 2.0)
 
-        Using pen As New Pen(stroke.Color, Math.Max(1.0F, width))
-            pen.StartCap = Drawing2D.LineCap.Round
-            pen.EndCap = Drawing2D.LineCap.Round
-            pen.LineJoin = Drawing2D.LineJoin.Round
+        Dim prevMode = g.CompositingMode
+        Dim prevQuality = g.CompositingQuality
+        Try
             If stroke.Tool = DrawingTool.Highlighter Then
-                ' Softer mark
-                pen.Color = stroke.Color
+                ' Additive soft mark — stacks translucently
+                g.CompositingMode = Drawing2D.CompositingMode.SourceOver
+                g.CompositingQuality = Drawing2D.CompositingQuality.HighQuality
+            Else
+                ' Pen: solid ink on top
+                g.CompositingMode = Drawing2D.CompositingMode.SourceOver
+                g.CompositingQuality = Drawing2D.CompositingQuality.HighSpeed
             End If
 
-            If stroke.Points.Count = 1 Then
-                Dim p = stroke.Points(0)
-                Dim pt = New PointF(
-                    destFrame.X + panX + p.X * contentW,
-                    destFrame.Y + panY + p.Y * contentH)
-                Dim r = Math.Max(1.0F, width / 2.0F)
-                Using br As New SolidBrush(stroke.Color)
-                    g.FillEllipse(br, pt.X - r, pt.Y - r, r * 2, r * 2)
-                End Using
-            Else
-                Dim pts(stroke.Points.Count - 1) As PointF
-                For i = 0 To stroke.Points.Count - 1
-                    Dim p = stroke.Points(i)
-                    pts(i) = New PointF(
+            Using pen As New Pen(stroke.Color, Math.Max(1.0F, width))
+                If stroke.Tool = DrawingTool.Pen Then
+                    pen.StartCap = Drawing2D.LineCap.Round
+                    pen.EndCap = Drawing2D.LineCap.Round
+                    pen.LineJoin = Drawing2D.LineJoin.Round
+                Else
+                    ' Highlighter: flatter, wider felt-tip look
+                    pen.StartCap = Drawing2D.LineCap.Flat
+                    pen.EndCap = Drawing2D.LineCap.Flat
+                    pen.LineJoin = Drawing2D.LineJoin.Round
+                End If
+
+                If stroke.Points.Count = 1 Then
+                    Dim p = stroke.Points(0)
+                    Dim pt = New PointF(
                         destFrame.X + panX + p.X * contentW,
                         destFrame.Y + panY + p.Y * contentH)
-                Next
-                g.DrawLines(pen, pts)
-            End If
-        End Using
+                    Dim r = Math.Max(1.0F, width / 2.0F)
+                    Using br As New SolidBrush(stroke.Color)
+                        g.FillEllipse(br, pt.X - r, pt.Y - r, r * 2, r * 2)
+                    End Using
+                Else
+                    Dim pts(stroke.Points.Count - 1) As PointF
+                    For i = 0 To stroke.Points.Count - 1
+                        Dim p = stroke.Points(i)
+                        pts(i) = New PointF(
+                            destFrame.X + panX + p.X * contentW,
+                            destFrame.Y + panY + p.Y * contentH)
+                    Next
+                    g.DrawLines(pen, pts)
+                End If
+            End Using
+        Finally
+            g.CompositingMode = prevMode
+            g.CompositingQuality = prevQuality
+        End Try
     End Sub
 
     Protected Overrides Sub OnPaintBackground(e As PaintEventArgs)

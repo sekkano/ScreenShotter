@@ -137,11 +137,25 @@ Public Class DrawingToolStrip
 
     Private Sub OnToolChanged(sender As Object, e As EventArgs)
         If _suppressEvents Then Return
-        _settings.Tool = ToolFromComboIndex(_cmbTool.SelectedIndex)
+        Dim tool = ToolFromComboIndex(_cmbTool.SelectedIndex)
+        ' Apply distinct presets so Pen is not identical to Highlighter
+        _settings.ApplyToolPreset(tool)
+        SyncAppearanceControlsFromSettings()
         ' Selecting a drawing tool switches out of pure Pointer mode
         _modeIsPointer = False
         _btnPointer.Checked = False
         RaiseSettingsChanged()
+    End Sub
+
+    Private Sub SyncAppearanceControlsFromSettings()
+        _suppressEvents = True
+        Try
+            UpdateColorSwatch()
+            SelectOpacity(_settings.OpacityPercent)
+            SelectThickness(_settings.Thickness)
+        Finally
+            _suppressEvents = False
+        End Try
     End Sub
 
     Private Sub OnColorClick(sender As Object, e As EventArgs)
@@ -188,40 +202,42 @@ Public Class DrawingToolStrip
     End Sub
 
     Private Sub SelectOpacity(percent As Integer)
+        Dim best = 0
+        Dim bestDiff = Integer.MaxValue
+        For i = 0 To OpacityChoices.Length - 1
+            Dim d = Math.Abs(OpacityChoices(i) - percent)
+            If d < bestDiff Then
+                bestDiff = d
+                best = i
+            End If
+        Next
+        Dim prev = _suppressEvents
         _suppressEvents = True
         Try
-            Dim best = 0
-            Dim bestDiff = Integer.MaxValue
-            For i = 0 To OpacityChoices.Length - 1
-                Dim d = Math.Abs(OpacityChoices(i) - percent)
-                If d < bestDiff Then
-                    bestDiff = d
-                    best = i
-                End If
-            Next
             _cmbOpacity.SelectedIndex = best
             _settings.OpacityPercent = OpacityChoices(best)
         Finally
-            _suppressEvents = False
+            _suppressEvents = prev
         End Try
     End Sub
 
     Private Sub SelectThickness(thickness As Single)
+        Dim best = 0
+        Dim bestDiff = Single.MaxValue
+        For i = 0 To ThicknessChoices.Length - 1
+            Dim d = Math.Abs(ThicknessChoices(i) - thickness)
+            If d < bestDiff Then
+                bestDiff = d
+                best = i
+            End If
+        Next
+        Dim prev = _suppressEvents
         _suppressEvents = True
         Try
-            Dim best = 0
-            Dim bestDiff = Single.MaxValue
-            For i = 0 To ThicknessChoices.Length - 1
-                Dim d = Math.Abs(ThicknessChoices(i) - thickness)
-                If d < bestDiff Then
-                    bestDiff = d
-                    best = i
-                End If
-            Next
             _cmbThickness.SelectedIndex = best
             _settings.Thickness = ThicknessChoices(best)
         Finally
-            _suppressEvents = False
+            _suppressEvents = prev
         End Try
     End Sub
 
