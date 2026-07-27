@@ -770,9 +770,6 @@ Public Class MovableScreenshotBox
             (shift AndAlso ctrl AndAlso inkTool)
 
         If allowHorizontalScroll Then
-            If Not isHorizontalDevice AndAlso _zoom > 1.001 AndAlso Not shift Then
-                ' side-tilt while zoomed: pan content (only pure tilt without shift scroll intent)
-            End If
             If isHorizontalDevice AndAlso _zoom > 1.001 AndAlso Not shift AndAlso Not ctrl Then
                 HandleWheelPanHorizontal(delta)
             Else
