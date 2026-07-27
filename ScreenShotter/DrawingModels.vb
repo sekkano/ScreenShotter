@@ -344,4 +344,11 @@ Public Module DrawingHelper
             Math.Max(0.0F, Math.Min(1.0F, p.X)),
             Math.Max(0.0F, Math.Min(1.0F, p.Y)))
     End Function
+
+    ''' <summary>
+    ''' Locks a sample to a horizontal line through the stroke origin (Shift+draw).
+    ''' </summary>
+    Public Function ConstrainHorizontal(sample As PointF, originY As Single) As PointF
+        Return New PointF(sample.X, originY)
+    End Function
 End Module

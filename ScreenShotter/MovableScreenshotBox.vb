@@ -46,6 +46,8 @@ Public Class MovableScreenshotBox
     Private _panStart As Point
     Private _selected As Boolean
     Private _aspectReference As Size
+    ''' <summary>When true, new samples keep the first stroke point's Y (Shift+draw horizontal).</summary>
+    Private _drawLockHorizontal As Boolean
 
     Private Const Grip As Integer = 10
     Private Const MinDisplayPx As Integer = 48
@@ -427,13 +429,15 @@ Public Class MovableScreenshotBox
             ElseIf ctrlHeld Then
                 ' Ctrl+drag always moves (works while a draw tool is active)
                 BeginMove(e.Location)
+            ElseIf DrawingHelper.IsInkTool(_canvas.ActiveTool) Then
+                ' Shift+draw locks horizontal; Shift alone without ink tool pans (below)
+                BeginDraw(e.Location, lockHorizontal:=shiftHeld)
             ElseIf shiftHeld Then
                 _mode = InteractMode.Pan
                 _panStartCursor = PointToScreen(e.Location)
                 _panStart = _pan
                 Capture = True
-            ElseIf DrawingHelper.IsInkTool(_canvas.ActiveTool) Then
-                BeginDraw(e.Location)
+                Cursor = Cursors.SizeAll
             Else
                 BeginMove(e.Location)
             End If
@@ -444,6 +448,7 @@ Public Class MovableScreenshotBox
             _panStartCursor = PointToScreen(e.Location)
             _panStart = _pan
             Capture = True
+            Cursor = Cursors.SizeAll
         End If
     End Sub
 
@@ -451,10 +456,13 @@ Public Class MovableScreenshotBox
         _mode = InteractMode.Move
         _dragOffset = local
         Capture = True
+        Cursor = Cursors.SizeAll
     End Sub
 
-    Private Sub BeginDraw(local As Point)
+    Private Sub BeginDraw(local As Point, Optional lockHorizontal As Boolean = False)
         _mode = InteractMode.Draw
+        _drawLockHorizontal = lockHorizontal OrElse
+            (Control.ModifierKeys And Keys.Shift) = Keys.Shift
         _activeStroke = _canvas.DrawingSettings.CreateStroke()
         AppendStrokePoint(local, force:=True)
         Capture = True
@@ -464,6 +472,7 @@ Public Class MovableScreenshotBox
 
     ''' <summary>
     ''' Adds a sample to the active stroke. force=True always records (stroke start/end).
+    ''' Shift (or stroke lock) keeps Y equal to the first point — horizontal straight line.
     ''' </summary>
     Private Sub AppendStrokePoint(local As Point, Optional force As Boolean = False)
         If _activeStroke Is Nothing Then Return
@@ -471,14 +480,34 @@ Public Class MovableScreenshotBox
         If Not norm.HasValue Then Return
 
         Dim p = DrawingHelper.ClampNormalized(norm.Value)
+
+        Dim shiftHeld = (Control.ModifierKeys And Keys.Shift) = Keys.Shift
+        If (_drawLockHorizontal OrElse shiftHeld) AndAlso _activeStroke.Points.Count > 0 Then
+            ' Horizontal constraint: same Y as stroke origin
+            p = DrawingHelper.ConstrainHorizontal(p, _activeStroke.Points(0).Y)
+            _drawLockHorizontal = True
+        End If
+
         If _activeStroke.Points.Count = 0 OrElse force Then
-            _activeStroke.Points.Add(p)
+            ' When forcing end point under horizontal lock, still pin Y
+            If force AndAlso _drawLockHorizontal AndAlso _activeStroke.Points.Count > 0 Then
+                p = New PointF(p.X, _activeStroke.Points(0).Y)
+            End If
+            If _activeStroke.Points.Count = 0 Then
+                _activeStroke.Points.Add(p)
+            ElseIf force Then
+                ' Replace last or append end — avoid stacking duplicates on same spot
+                Dim last = _activeStroke.Points(_activeStroke.Points.Count - 1)
+                If Math.Abs(last.X - p.X) > 0.00001F OrElse Math.Abs(last.Y - p.Y) > 0.00001F Then
+                    _activeStroke.Points.Add(p)
+                End If
+            End If
             Return
         End If
 
-        Dim last = _activeStroke.Points(_activeStroke.Points.Count - 1)
-        Dim dx = p.X - last.X
-        Dim dy = p.Y - last.Y
+        Dim prev = _activeStroke.Points(_activeStroke.Points.Count - 1)
+        Dim dx = p.X - prev.X
+        Dim dy = p.Y - prev.Y
         ' Keep early samples denser for a clean start; thin out later
         Dim minDistSq = If(_activeStroke.Points.Count < 4, 0.00000005F, 0.0000002F)
         If (dx * dx + dy * dy) >= minDistSq Then
@@ -497,6 +526,10 @@ Public Class MovableScreenshotBox
         Dim screenCursor = PointToScreen(e.Location)
 
         If _mode = InteractMode.Draw Then
+            ' Allow engaging horizontal lock mid-stroke by holding Shift
+            If (Control.ModifierKeys And Keys.Shift) = Keys.Shift Then
+                _drawLockHorizontal = True
+            End If
             Dim before = If(_activeStroke IsNot Nothing, _activeStroke.Points.Count, 0)
             AppendStrokePoint(e.Location, force:=False)
             If _activeStroke IsNot Nothing AndAlso _activeStroke.Points.Count <> before Then
@@ -506,6 +539,7 @@ Public Class MovableScreenshotBox
         End If
 
         If _mode = InteractMode.Move Then
+            Cursor = Cursors.SizeAll
             Dim parentCtrl = Parent
             If parentCtrl Is Nothing Then Return
             Dim newLoc = parentCtrl.PointToClient(screenCursor)
@@ -654,6 +688,11 @@ Public Class MovableScreenshotBox
     Protected Overrides Function IsInputKey(keyData As Keys) As Boolean
         Dim key = keyData And Not Keys.Modifiers
         If key = Keys.Delete OrElse key = Keys.Back Then Return True
+        If key = Keys.ControlKey OrElse key = Keys.ShiftKey OrElse
+           key = Keys.LControlKey OrElse key = Keys.RControlKey OrElse
+           key = Keys.LShiftKey OrElse key = Keys.RShiftKey Then
+            Return True
+        End If
         Return MyBase.IsInputKey(keyData)
     End Function
 
@@ -665,6 +704,23 @@ Public Class MovableScreenshotBox
                 e.Handled = True
                 e.SuppressKeyPress = True
             End If
+        End If
+        ' Update cursor when Ctrl (move) or Shift is pressed without moving the mouse
+        If _mode = InteractMode.None Then
+            Cursor = CursorForIdle(PointToClient(Cursor.Position))
+        ElseIf _mode = InteractMode.Move Then
+            Cursor = Cursors.SizeAll
+        ElseIf _mode = InteractMode.Draw AndAlso e.Shift Then
+            _drawLockHorizontal = True
+        End If
+    End Sub
+
+    Protected Overrides Sub OnKeyUp(e As KeyEventArgs)
+        MyBase.OnKeyUp(e)
+        If _mode = InteractMode.None Then
+            Cursor = CursorForIdle(PointToClient(Cursor.Position))
+        ElseIf _mode = InteractMode.Move Then
+            Cursor = Cursors.SizeAll
         End If
     End Sub
 
@@ -690,6 +746,7 @@ Public Class MovableScreenshotBox
                 _strokes.Add(_activeStroke)
             End If
             _activeStroke = Nothing
+            _drawLockHorizontal = False
             Invalidate()
         End If
 
@@ -699,7 +756,7 @@ Public Class MovableScreenshotBox
         If wasResize Then
             RaiseTransform()
         End If
-        Cursor = CursorForIdle()
+        Cursor = CursorForIdle(PointToClient(Cursor.Position))
         RaiseEvent InteractionEnded(Me, EventArgs.Empty)
     End Sub
 
@@ -707,6 +764,10 @@ Public Class MovableScreenshotBox
         If local.HasValue Then
             Dim edge = HitTestEdge(local.Value)
             If edge <> ResizeEdge.None Then Return CursorForEdge(edge)
+        End If
+        ' Ctrl held → move cursor (same as drag-to-move)
+        If (Control.ModifierKeys And Keys.Control) = Keys.Control Then
+            Return Cursors.SizeAll
         End If
         If _canvas IsNot Nothing AndAlso DrawingHelper.IsInkTool(_canvas.ActiveTool) Then
             Return Cursors.Cross

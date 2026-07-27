@@ -148,4 +148,13 @@ public class DrawingHelperTests
         var at2 = DrawingHelper.ViewportStrokeWidth(20, frame, natural, 2.0);
         Assert.True(at2 > at1);
     }
+
+    [Fact]
+    public void ConstrainHorizontal_KeepsX_LocksY()
+    {
+        var sample = new PointF(0.8f, 0.9f);
+        var locked = DrawingHelper.ConstrainHorizontal(sample, originY: 0.25f);
+        Assert.Equal(0.8f, locked.X);
+        Assert.Equal(0.25f, locked.Y);
+    }
 }
