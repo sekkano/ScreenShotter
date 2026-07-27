@@ -130,8 +130,8 @@ Public Class DrawingSettings
         Dim app = CurrentAppearance()
         Dim a = CInt(Math.Round(app.OpacityPercent / 100.0 * 255.0))
         a = Math.Max(0, Math.Min(255, a))
-        Dim color = Color.FromArgb(a, app.BaseColor)
-        Return New InkStroke(tool, color, app.Thickness)
+        Dim inkColor = Color.FromArgb(a, app.BaseColor)
+        Return New InkStroke(tool, inkColor, app.Thickness)
     End Function
 
     ''' <summary>
