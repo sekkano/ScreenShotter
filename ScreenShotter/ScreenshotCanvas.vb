@@ -362,14 +362,13 @@ Public Class ScreenshotCanvas
     End Function
 
     Protected Overrides Sub OnMouseWheel(e As MouseEventArgs)
-        ' Vertical wheel only — never remap to horizontal via Shift
+        ' Vertical wheel: Ctrl over zoomed image → pan image; else form vertical scroll
         Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
         Dim box = GetScreenshotUnderPointer()
 
-        If ctrl AndAlso box IsNot Nothing Then
-            box.HandleWheelZoom(e.Delta, Cursor.Position)
-            Dim handledZoom = TryCast(e, HandledMouseEventArgs)
-            If handledZoom IsNot Nothing Then handledZoom.Handled = True
+        If ctrl AndAlso box IsNot Nothing AndAlso box.HandleWheelPan(e.Delta, horizontal:=False) Then
+            Dim handled = TryCast(e, HandledMouseEventArgs)
+            If handled IsNot Nothing Then handled.Handled = True
             Return
         End If
 
@@ -386,24 +385,25 @@ Public Class ScreenshotCanvas
                 Dim box = GetScreenshotUnderPointer()
                 If box IsNot Nothing Then
                     Dim delta = WheelScrollHelper.DeltaFromWParam(m.WParam)
-                    box.HandleWheelZoom(delta, Cursor.Position)
-                    m.Result = New IntPtr(1)
-                    Return
+                    If box.HandleWheelPan(delta, horizontal:=False) Then
+                        m.Result = New IntPtr(1)
+                        Return
+                    End If
                 End If
             End If
-            ' Let default / OnMouseWheel do vertical AutoScroll
+            ' No Ctrl (or nothing to pan): vertical form AutoScroll
         End If
 
         If m.Msg = WM_MOUSEHWHEEL Then
-            ' Side-tilt only → horizontal canvas scroll
             Dim delta = WheelScrollHelper.DeltaFromWParam(m.WParam)
+            Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
             Dim box = GetScreenshotUnderPointer()
-            If box IsNot Nothing AndAlso box.Zoom > 1.001 AndAlso
-               (Control.ModifierKeys And Keys.Control) <> Keys.Control Then
-                box.HandleWheelPanHorizontal(delta)
-            Else
-                ScrollFromWheel(delta, horizontal:=True)
+            If ctrl AndAlso box IsNot Nothing AndAlso box.HandleWheelPan(delta, horizontal:=True) Then
+                m.Result = New IntPtr(1)
+                Return
             End If
+            ' Side-tilt without Ctrl (or can't pan): form horizontal scroll
+            ScrollFromWheel(delta, horizontal:=True)
             m.Result = New IntPtr(1)
             Return
         End If

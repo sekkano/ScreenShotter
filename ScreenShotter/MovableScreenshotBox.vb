@@ -219,8 +219,7 @@ Public Class MovableScreenshotBox
     End Sub
 
     ''' <summary>
-    ''' Applies a vertical wheel delta as zoom (frame size unchanged). Used when the
-    ''' canvas receives the wheel message while the pointer is over this image.
+    ''' Applies a vertical wheel delta as zoom (toolbar / callers that still want zoom).
     ''' </summary>
     Public Sub HandleWheelZoom(wheelDelta As Integer, screenPoint As Point)
         Dim steps = Math.Sign(wheelDelta)
@@ -233,14 +232,44 @@ Public Class MovableScreenshotBox
     End Sub
 
     ''' <summary>
-    ''' Horizontal wheel pans content inside the frame (does not scroll the parent canvas).
+    ''' True when zoomed content is larger than the frame on the given axis (can pan).
     ''' </summary>
-    Public Sub HandleWheelPanHorizontal(wheelDelta As Integer)
-        Dim dx = WheelScrollHelper.DeltaToScrollPixels(wheelDelta)
-        If dx = 0 Then Return
+    Public Function CanPanContent(horizontal As Boolean) As Boolean
         Dim content = ZoomHelper.ContentSize(Size, _zoom)
-        _pan = ZoomHelper.ClampPan(New Point(_pan.X - dx, _pan.Y), content, Size)
+        If horizontal Then
+            Return content.Width > Width
+        End If
+        Return content.Height > Height
+    End Function
+
+    ''' <summary>
+    ''' Pans zoomed content with the wheel. Positive delta pans content so you see "up/left".
+    ''' Returns True if pan was applied.
+    ''' </summary>
+    Public Function HandleWheelPan(wheelDelta As Integer, horizontal As Boolean) As Boolean
+        Dim pixels = WheelScrollHelper.DeltaToScrollPixels(wheelDelta)
+        If pixels = 0 Then Return False
+        If Not CanPanContent(horizontal) Then Return False
+
+        Dim content = ZoomHelper.ContentSize(Size, _zoom)
+        Dim dx = 0
+        Dim dy = 0
+        If horizontal Then
+            dx = -pixels
+        Else
+            ' Match form scroll feel: wheel up (positive) moves view up → pan.Y increases
+            dy = pixels
+        End If
+        Dim nextPan = ZoomHelper.ClampPan(New Point(_pan.X + dx, _pan.Y + dy), content, Size)
+        If nextPan = _pan Then Return False
+        _pan = nextPan
         Invalidate()
+        Return True
+    End Function
+
+    ''' <summary>Horizontal pan of zoomed content (side-tilt + Ctrl).</summary>
+    Public Sub HandleWheelPanHorizontal(wheelDelta As Integer)
+        HandleWheelPan(wheelDelta, horizontal:=True)
     End Sub
 
     ''' <summary>
@@ -715,10 +744,9 @@ Public Class MovableScreenshotBox
     End Sub
 
     ''' <summary>
-    ''' Wheel routing over a screenshot:
-    ''' - Vertical wheel (up/down): Ctrl → zoom, otherwise vertical canvas scroll
-    ''' - Horizontal side-tilt wheel only → horizontal canvas scroll (or pan if zoomed)
-    ''' Shift does not change scroll axis (Shift is for horizontal drawing with the mouse).
+    ''' Wheel routing over a screenshot (consistent):
+    ''' - No Ctrl: always scroll the form (vertical or side-tilt horizontal)
+    ''' - Ctrl + vertical/side-tilt: pan zoomed image content when possible; else form scroll
     ''' </summary>
     Protected Overrides Sub WndProc(ByRef m As Message)
         Const WM_MOUSEWHEEL As Integer = &H20A
@@ -749,20 +777,18 @@ Public Class MovableScreenshotBox
 
     Private Sub HandleVerticalWheel(delta As Integer)
         Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
-        If ctrl Then
-            HandleWheelZoom(delta, Cursor.Position)
-        Else
-            ForwardVerticalScrollToCanvas(delta)
+        If ctrl AndAlso HandleWheelPan(delta, horizontal:=False) Then
+            Return
         End If
+        ForwardVerticalScrollToCanvas(delta)
     End Sub
 
     Private Sub HandleHorizontalWheel(delta As Integer)
-        ' Side-tilt only — never remap vertical wheel to horizontal via Shift
-        If _zoom > 1.001 AndAlso (Control.ModifierKeys And Keys.Control) <> Keys.Control Then
-            HandleWheelPanHorizontal(delta)
-        Else
-            ForwardHorizontalScrollToCanvas(delta)
+        Dim ctrl = (Control.ModifierKeys And Keys.Control) = Keys.Control
+        If ctrl AndAlso HandleWheelPan(delta, horizontal:=True) Then
+            Return
         End If
+        ForwardHorizontalScrollToCanvas(delta)
     End Sub
 
     Private Sub ForwardVerticalScrollToCanvas(wheelDelta As Integer)
