@@ -38,6 +38,7 @@
 
     ''' <summary>
     ''' Delete / Backspace removes the selected screenshot on the active tab.
+    ''' Ctrl+Z / Ctrl+Y undo and redo on the active tab.
     ''' Ctrl+S saves the current tab composite.
     ''' </summary>
     Protected Overrides Function ProcessCmdKey(ByRef msg As Message, keyData As Keys) As Boolean
@@ -48,6 +49,20 @@
                     UpdateStatus()
                     Return True
                 End If
+            End If
+        End If
+        If keyData = (Keys.Control Or Keys.Z) Then
+            Dim canvas = GetActiveCanvas()
+            If canvas IsNot Nothing AndAlso canvas.Undo() Then
+                UpdateStatus()
+                Return True
+            End If
+        End If
+        If keyData = (Keys.Control Or Keys.Y) OrElse keyData = (Keys.Control Or Keys.Shift Or Keys.Z) Then
+            Dim canvas = GetActiveCanvas()
+            If canvas IsNot Nothing AndAlso canvas.Redo() Then
+                UpdateStatus()
+                Return True
             End If
         End If
         If keyData = (Keys.Control Or Keys.S) Then

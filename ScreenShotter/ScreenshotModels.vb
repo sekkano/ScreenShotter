@@ -3,8 +3,8 @@
 ''' Pure model — no WinForms control references.
 ''' </summary>
 Public Class ScreenshotItem
-    Public Sub New(Optional location As Point = Nothing, Optional size As Size = Nothing)
-        Id = Guid.NewGuid()
+    Public Sub New(Optional location As Point = Nothing, Optional size As Size = Nothing, Optional id As Guid = Nothing)
+        Me.Id = If(id = Guid.Empty, Guid.NewGuid(), id)
         Me.Location = location
         Me.Size = size
     End Sub
@@ -32,8 +32,8 @@ Public Class TabSession
         End Get
     End Property
 
-    Public Function AddScreenshot(location As Point, size As Size) As ScreenshotItem
-        Dim item As New ScreenshotItem(location, size)
+    Public Function AddScreenshot(location As Point, size As Size, Optional id As Guid = Nothing) As ScreenshotItem
+        Dim item As New ScreenshotItem(location, size, id)
         _items.Add(item)
         Return item
     End Function

@@ -10,6 +10,7 @@ Public Class ScreenshotCanvas
     Private ReadOnly _images As New Dictionary(Of Guid, Image)()
     Private ReadOnly _boxes As New Dictionary(Of Guid, MovableScreenshotBox)()
     Private ReadOnly _surface As Panel
+    Private ReadOnly _history As New UndoRedoStack(50)
     Private _selectedId As Guid = Guid.Empty
     Private _scrollUpdatePending As Boolean
     Private _activeTool As DrawingTool = DrawingTool.Pointer
@@ -110,7 +111,7 @@ Public Class ScreenshotCanvas
     Public Event SelectionChanged As EventHandler
     Public Event TransformChanged As EventHandler(Of TransformChangedEventArgs)
 
-    Public Function AddScreenshotImage(image As Image, Optional location As Point? = Nothing) As ScreenshotItem
+    Public Function AddScreenshotImage(image As Image, Optional location As Point? = Nothing, Optional recordHistory As Boolean = True) As ScreenshotItem
         If image Is Nothing Then Throw New ArgumentNullException(NameOf(image))
 
         Dim size = image.Size
@@ -134,8 +135,109 @@ Public Class ScreenshotCanvas
         box.BringToFront()
         SelectBox(box)
         UpdateScrollBounds()
+        If recordHistory Then
+            _history.Push(New AddScreenshotHistoryAction(Me, item.Id))
+        End If
         Return item
     End Function
+
+    Public Function FindBox(itemId As Guid) As MovableScreenshotBox
+        Dim box As MovableScreenshotBox = Nothing
+        If _boxes.TryGetValue(itemId, box) Then Return box
+        Return Nothing
+    End Function
+
+    Public Sub SyncBoxModel(itemId As Guid)
+        Dim box = FindBox(itemId)
+        If box Is Nothing Then Return
+        _session.MoveScreenshot(itemId, box.Location)
+        Dim item = _session.TryGetItem(itemId)
+        If item IsNot Nothing Then
+            item.Location = box.Location
+            item.Size = box.Size
+        End If
+    End Sub
+
+    Public Sub RecordStroke(itemId As Guid, stroke As InkStroke)
+        If stroke Is Nothing Then Return
+        _history.Push(New StrokeHistoryAction(Me, itemId, stroke))
+    End Sub
+
+    Public Sub RecordTransform(itemId As Guid, before As BoxTransformState, after As BoxTransformState)
+        If before.EqualsState(after) Then Return
+        _history.Push(New TransformHistoryAction(Me, itemId, before, after))
+    End Sub
+
+    Public Function CanUndo() As Boolean
+        Return _history.CanUndo
+    End Function
+
+    Public Function CanRedo() As Boolean
+        Return _history.CanRedo
+    End Function
+
+    Public Function Undo() As Boolean
+        Return _history.Undo()
+    End Function
+
+    Public Function Redo() As Boolean
+        Return _history.Redo()
+    End Function
+
+    ''' <summary>
+    ''' Clones image + transform + strokes for restore after delete / undoing an add.
+    ''' </summary>
+    Public Function TakeSnapshot(itemId As Guid) As ScreenshotSnapshot
+        Dim box = FindBox(itemId)
+        Dim img As Image = Nothing
+        If box Is Nothing OrElse Not _images.TryGetValue(itemId, img) OrElse img Is Nothing Then
+            Return Nothing
+        End If
+        Return New ScreenshotSnapshot With {
+            .ItemId = itemId,
+            .Image = DirectCast(img.Clone(), Image),
+            .Transform = box.CaptureTransform(),
+            .Strokes = box.CloneStrokes()
+        }
+    End Function
+
+    ''' <summary>
+    ''' Re-adds a screenshot from a history snapshot (same id, image clone, strokes).
+    ''' </summary>
+    Public Sub RestoreSnapshot(snapshot As ScreenshotSnapshot)
+        If snapshot Is Nothing OrElse snapshot.Image Is Nothing Then Return
+        If _boxes.ContainsKey(snapshot.ItemId) Then Return
+
+        Dim owned = DirectCast(snapshot.Image.Clone(), Image)
+        Dim loc = snapshot.Transform.Location
+        Dim size = snapshot.Transform.Size
+        If size.Width < 1 OrElse size.Height < 1 Then
+            size = owned.Size
+        End If
+
+        Dim item = _session.AddScreenshot(loc, size, snapshot.ItemId)
+        _images(item.Id) = owned
+
+        Dim box As New MovableScreenshotBox(item.Id, owned, Me) With {
+            .Location = loc
+        }
+        box.ApplyTransform(snapshot.Transform)
+        box.ReplaceStrokes(snapshot.Strokes)
+
+        AddHandler box.PositionChanged, AddressOf OnBoxPositionChanged
+        AddHandler box.TransformChanged, AddressOf OnBoxTransformChanged
+        AddHandler box.SelectedChanged, AddressOf OnBoxSelectedChanged
+        AddHandler box.InteractionEnded, AddressOf OnBoxInteractionEnded
+
+        _boxes(item.Id) = box
+        _surface.SuspendLayout()
+        _surface.Controls.Add(box)
+        _surface.ResumeLayout(False)
+        box.BringToFront()
+        SelectBox(box)
+        SyncBoxModel(item.Id)
+        UpdateScrollBounds()
+    End Sub
 
     Public Sub ZoomSelectedIn()
         SelectedBox?.ZoomIn()
@@ -208,12 +310,17 @@ Public Class ScreenshotCanvas
         Return True
     End Function
 
-    Public Function RemoveScreenshot(id As Guid) As Boolean
+    Public Function RemoveScreenshot(id As Guid, Optional recordHistory As Boolean = True) As Boolean
         If id = Guid.Empty Then Return False
 
         Dim box As MovableScreenshotBox = Nothing
         If Not _boxes.TryGetValue(id, box) Then
             Return _session.RemoveScreenshot(id)
+        End If
+
+        Dim snapshot As ScreenshotSnapshot = Nothing
+        If recordHistory Then
+            snapshot = TakeSnapshot(id)
         End If
 
         RemoveHandler box.PositionChanged, AddressOf OnBoxPositionChanged
@@ -244,6 +351,9 @@ Public Class ScreenshotCanvas
         End If
 
         UpdateScrollBounds()
+        If recordHistory AndAlso snapshot IsNot Nothing Then
+            _history.Push(New DeleteScreenshotHistoryAction(Me, snapshot))
+        End If
         Return True
     End Function
 
@@ -493,6 +603,7 @@ Public Class ScreenshotCanvas
                 img.Dispose()
             Next
             _images.Clear()
+            _history.Clear()
         End If
         MyBase.Dispose(disposing)
     End Sub

@@ -37,10 +37,19 @@ public class StructuralTypeTests
         Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("ZoomSelectedOut"));
         Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("ZoomSelectedReset"));
         Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("RemoveSelectedScreenshot"));
-        Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("RemoveScreenshot", new[] { typeof(Guid) }));
+        Assert.NotNull(typeof(ScreenshotCanvas).GetMethod(
+            "RemoveScreenshot",
+            new[] { typeof(Guid), typeof(bool) }));
+        Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("Undo", Type.EmptyTypes));
+        Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("Redo", Type.EmptyTypes));
+        Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("CanUndo", Type.EmptyTypes));
+        Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("CanRedo", Type.EmptyTypes));
         Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("RenderTabComposite"));
         Assert.NotNull(typeof(ScreenshotCanvas).GetMethod("SaveTabComposite", new[] { typeof(string) }));
         Assert.NotNull(typeof(ScreenshotCanvas).GetProperty("ScreenshotCount"));
+        Assert.NotNull(typeof(UndoRedoStack).GetMethod("Push"));
+        Assert.NotNull(typeof(UndoRedoStack).GetMethod("Undo"));
+        Assert.NotNull(typeof(UndoRedoStack).GetMethod("Redo"));
         Assert.NotNull(typeof(TabSession).GetMethod("RemoveScreenshot", new[] { typeof(Guid) }));
         Assert.NotNull(typeof(TabExportHelper).GetMethod("ComputeUnionBounds"));
         Assert.NotNull(typeof(TabExportHelper).GetMethod("FormatFromPath", new[] { typeof(string) }));

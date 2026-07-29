@@ -53,6 +53,8 @@ Public Class MovableScreenshotBox
     Private _pendingMoveLocal As Point
     Private _pendingMoveScreen As Point
     Private _endingInteract As Boolean
+    Private _transformAtInteractionStart As BoxTransformState
+    Private _hasTransformBaseline As Boolean
 
     Private Const Grip As Integer = 10
     Private Const MinDisplayPx As Integer = 48
@@ -140,6 +142,7 @@ Public Class MovableScreenshotBox
         _resizeEdge = ResizeEdge.None
         _activeStroke = Nothing
         _drawLockHorizontal = False
+        _hasTransformBaseline = False
         Cursor = CursorForIdle(PointToClient(Cursor.Position))
         If wasMoveOrResize Then
             Dim clamped = CanvasCoordinateHelper.ClampDocumentLocation(Location, Size)
@@ -197,25 +200,81 @@ Public Class MovableScreenshotBox
         End If
     End Sub
 
-    Public Sub ZoomIn()
-        Dim center As New Point(Width \ 2, Height \ 2)
-        SetZoom(ZoomHelper.ZoomBySteps(_zoom, 1), center, useCursor:=True, notify:=True)
-    End Sub
+    Public Function CaptureTransform() As BoxTransformState
+        Return BoxTransformState.FromBox(Me)
+    End Function
 
-    Public Sub ZoomOut()
-        Dim center As New Point(Width \ 2, Height \ 2)
-        SetZoom(ZoomHelper.ZoomBySteps(_zoom, -1), center, useCursor:=True, notify:=True)
-    End Sub
-
-    Public Sub ZoomReset()
-        SetZoom(ZoomHelper.DefaultZoom, Point.Empty, useCursor:=False, notify:=True)
-        RecenterPan()
+    Public Sub ApplyTransform(state As BoxTransformState)
+        _zoom = ZoomHelper.ClampZoom(state.Zoom)
+        Location = CanvasCoordinateHelper.ClampDocumentLocation(state.Location, state.Size)
+        Size = New Size(Math.Max(MinDisplayPx, state.Size.Width), Math.Max(MinDisplayPx, state.Size.Height))
+        Dim content = ZoomHelper.ContentSize(Size, _zoom)
+        _pan = ZoomHelper.ClampPan(state.Pan, content, Size)
         Invalidate()
     End Sub
 
+    Public Sub AddStroke(stroke As InkStroke)
+        If stroke Is Nothing Then Return
+        _strokes.Add(stroke)
+        Invalidate()
+    End Sub
+
+    Public Function RemoveStroke(stroke As InkStroke) As Boolean
+        If stroke Is Nothing Then Return False
+        Dim removed = _strokes.Remove(stroke)
+        If removed Then Invalidate()
+        Return removed
+    End Function
+
+    Public Function CloneStrokes() As List(Of InkStroke)
+        ' Strokes are immutable after completion; share references for undo snapshots.
+        Return New List(Of InkStroke)(_strokes)
+    End Function
+
+    Public Sub ReplaceStrokes(strokes As IEnumerable(Of InkStroke))
+        _strokes.Clear()
+        If strokes IsNot Nothing Then
+            _strokes.AddRange(strokes)
+        End If
+        Invalidate()
+    End Sub
+
+    Private Sub RememberTransformBaseline()
+        _transformAtInteractionStart = CaptureTransform()
+        _hasTransformBaseline = True
+    End Sub
+
+    Public Sub ZoomIn()
+        Dim before = CaptureTransform()
+        Dim center As New Point(Width \ 2, Height \ 2)
+        SetZoom(ZoomHelper.ZoomBySteps(_zoom, 1), center, useCursor:=True, notify:=True)
+        Dim after = CaptureTransform()
+        If Not before.EqualsState(after) Then _canvas?.RecordTransform(ItemId, before, after)
+    End Sub
+
+    Public Sub ZoomOut()
+        Dim before = CaptureTransform()
+        Dim center As New Point(Width \ 2, Height \ 2)
+        SetZoom(ZoomHelper.ZoomBySteps(_zoom, -1), center, useCursor:=True, notify:=True)
+        Dim after = CaptureTransform()
+        If Not before.EqualsState(after) Then _canvas?.RecordTransform(ItemId, before, after)
+    End Sub
+
+    Public Sub ZoomReset()
+        Dim before = CaptureTransform()
+        SetZoom(ZoomHelper.DefaultZoom, Point.Empty, useCursor:=False, notify:=True)
+        RecenterPan()
+        Invalidate()
+        Dim after = CaptureTransform()
+        If Not before.EqualsState(after) Then _canvas?.RecordTransform(ItemId, before, after)
+    End Sub
+
     Public Sub ZoomTo(zoom As Double)
+        Dim before = CaptureTransform()
         Dim center As New Point(Width \ 2, Height \ 2)
         SetZoom(zoom, center, useCursor:=True, notify:=True)
+        Dim after = CaptureTransform()
+        If Not before.EqualsState(after) Then _canvas?.RecordTransform(ItemId, before, after)
     End Sub
 
     ''' <summary>
@@ -228,7 +287,12 @@ Public Class MovableScreenshotBox
         If Not ClientRectangle.Contains(local) Then
             local = New Point(Width \ 2, Height \ 2)
         End If
+        Dim before = CaptureTransform()
         SetZoom(ZoomHelper.ZoomBySteps(_zoom, steps), local, useCursor:=True, notify:=True)
+        Dim after = CaptureTransform()
+        If Not before.EqualsState(after) Then
+            _canvas?.RecordTransform(ItemId, before, after)
+        End If
     End Sub
 
     ''' <summary>
@@ -262,8 +326,13 @@ Public Class MovableScreenshotBox
         End If
         Dim nextPan = ZoomHelper.ClampPan(New Point(_pan.X + dx, _pan.Y + dy), content, Size)
         If nextPan = _pan Then Return False
+        Dim before = CaptureTransform()
         _pan = nextPan
         Invalidate()
+        Dim after = CaptureTransform()
+        If Not before.EqualsState(after) Then
+            _canvas?.RecordTransform(ItemId, before, after)
+        End If
         Return True
     End Function
 
@@ -501,6 +570,7 @@ Public Class MovableScreenshotBox
                 _resizeStartLocation = Location
                 _resizeStartSize = Size
                 _aspectReference = Size
+                RememberTransformBaseline()
                 Capture = True
             ElseIf ctrlHeld Then
                 ' Ctrl+drag always moves (works while a draw tool is active)
@@ -508,11 +578,7 @@ Public Class MovableScreenshotBox
             ElseIf DrawingHelper.IsInkTool(_canvas.ActiveTool) Then
                 BeginDraw(e.Location, lockHorizontal:=shiftHeld)
             ElseIf shiftHeld Then
-                _mode = InteractMode.Pan
-                _panStartCursor = PointToScreen(e.Location)
-                _panStart = _pan
-                Capture = True
-                Cursor = Cursors.SizeAll
+                BeginPan(e.Location)
             Else
                 ' Click selects; drag past threshold moves (avoids accidental teleport)
                 BeginPendingMove(e.Location)
@@ -521,12 +587,17 @@ Public Class MovableScreenshotBox
             _canvas?.CancelInteractionsExcept(Me)
             SelectMe()
             BringToFront()
-            _mode = InteractMode.Pan
-            _panStartCursor = PointToScreen(e.Location)
-            _panStart = _pan
-            Capture = True
-            Cursor = Cursors.SizeAll
+            BeginPan(e.Location)
         End If
+    End Sub
+
+    Private Sub BeginPan(local As Point)
+        _mode = InteractMode.Pan
+        _panStartCursor = PointToScreen(local)
+        _panStart = _pan
+        RememberTransformBaseline()
+        Capture = True
+        Cursor = Cursors.SizeAll
     End Sub
 
     Private Sub BeginPendingMove(local As Point)
@@ -544,6 +615,7 @@ Public Class MovableScreenshotBox
         _pendingMove = False
         _mode = InteractMode.Move
         _dragOffset = local
+        RememberTransformBaseline()
         Capture = True
         Cursor = Cursors.SizeAll
     End Sub
@@ -874,6 +946,7 @@ Public Class MovableScreenshotBox
         Try
             Dim wasMove = _mode = InteractMode.Move
             Dim wasResize = _mode = InteractMode.Resize
+            Dim wasPan = _mode = InteractMode.Pan
             Dim wasDraw = _mode = InteractMode.Draw
             ' Pure click (select only) — must not change Location or fire move events
             Dim wasPendingOnly = _pendingMove AndAlso _mode = InteractMode.None
@@ -882,10 +955,12 @@ Public Class MovableScreenshotBox
             _resizeEdge = ResizeEdge.None
             If Capture Then Capture = False
 
+            Dim completedStroke As InkStroke = Nothing
             If wasDraw AndAlso _activeStroke IsNot Nothing Then
                 AppendStrokePoint(PointToClient(Cursor.Position), force:=True)
                 If _activeStroke.Points.Count >= 1 Then
                     _strokes.Add(_activeStroke)
+                    completedStroke = _activeStroke
                 End If
                 _activeStroke = Nothing
                 _drawLockHorizontal = False
@@ -906,9 +981,23 @@ Public Class MovableScreenshotBox
             If wasResize Then
                 RaiseTransform()
             End If
+
+            ' Record undo for completed interactions
+            If completedStroke IsNot Nothing Then
+                _canvas?.RecordStroke(ItemId, completedStroke)
+            End If
+            If _hasTransformBaseline AndAlso
+                ((wasMove AndAlso Not wasPendingOnly) OrElse wasResize OrElse wasPan) Then
+                Dim after = CaptureTransform()
+                If Not _transformAtInteractionStart.EqualsState(after) Then
+                    _canvas?.RecordTransform(ItemId, _transformAtInteractionStart, after)
+                End If
+            End If
+            _hasTransformBaseline = False
+
             Cursor = CursorForIdle(PointToClient(Cursor.Position))
             ' Skip scroll-bounds churn on simple select clicks
-            If Not wasPendingOnly OrElse wasDraw OrElse wasResize OrElse wasMove Then
+            If Not wasPendingOnly OrElse wasDraw OrElse wasResize OrElse wasMove OrElse wasPan Then
                 RaiseEvent InteractionEnded(Me, EventArgs.Empty)
             End If
         Finally

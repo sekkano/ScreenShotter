@@ -31,6 +31,8 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 | Shortcut | Action |
 |----------|--------|
 | **Ctrl+S** | Save Tab |
+| **Ctrl+Z** | Undo (draw, move, resize, zoom, pan, add, delete) |
+| **Ctrl+Y** or **Ctrl+Shift+Z** | Redo |
 | **Delete** or **Backspace** | Delete the selected screenshot |
 | **Shift + mouse wheel** (over a screenshot) | Zoom that screenshot |
 | **Ctrl + mouse wheel** (over a zoomed image) | Pan the zoomed image (vertical / side-tilt) |
