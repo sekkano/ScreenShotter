@@ -7,6 +7,12 @@
     ''' <summary>Hit padding around the close glyph in tab headers.</summary>
     Private Const CloseHitPad As Integer = 4
 
+    ''' <summary>True while inserting/selecting a tab so Selecting handlers do not re-enter.</summary>
+    Private _creatingTab As Boolean
+
+    ''' <summary>True when a deferred CreateNewTab is already scheduled (MouseDown + Selecting).</summary>
+    Private _newTabQueued As Boolean
+
     Private Sub frmScreenShotter_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         ' Responsive chrome: menu + toolstrip top, status bottom, tabs fill remainder
         menuStrip.Dock = DockStyle.Top
@@ -145,22 +151,44 @@
     End Sub
 
     Private Sub tabControl_Selecting(sender As Object, e As TabControlCancelEventArgs) Handles tabControl.Selecting
+        If _creatingTab Then Return
         If e.TabPage Is Nothing Then Return
         If IsPlusPage(e.TabPage) Then
+            ' Never leave the + tab selected. Create the real tab after this event finishes —
+            ' setting SelectedTab during Selecting is unreliable in WinForms.
             e.Cancel = True
-            CreateNewTab()
+            QueueCreateNewTab()
         End If
     End Sub
 
     Private Sub tabControl_MouseDown(sender As Object, e As MouseEventArgs) Handles tabControl.MouseDown
         If e.Button <> MouseButtons.Left Then Return
         Dim index = HitTestTabIndex(e.Location)
-        If index < 0 OrElse IsPlusTab(index) Then Return
+        If index < 0 Then Return
 
-        ' Close glyph only — "+" is handled in Selecting (avoids double-create)
+        If IsPlusTab(index) Then
+            ' Backup path if Selecting did not run (owner-draw quirks). Deferred to avoid re-entry.
+            QueueCreateNewTab()
+            Return
+        End If
+
+        ' Close glyph only
         If GetCloseButtonRect(index).Contains(e.Location) Then
             CloseTabAt(index)
         End If
+    End Sub
+
+    ''' <summary>
+    ''' Schedules CreateNewTab once after the current UI event (Selecting/MouseDown) completes.
+    ''' </summary>
+    Private Sub QueueCreateNewTab()
+        If _creatingTab OrElse _newTabQueued Then Return
+        _newTabQueued = True
+        BeginInvoke(New Action(
+            Sub()
+                _newTabQueued = False
+                CreateNewTab()
+            End Sub))
     End Sub
 
     Private Sub tabControl_DrawItem(sender As Object, e As DrawItemEventArgs) Handles tabControl.DrawItem
@@ -224,39 +252,66 @@
     End Sub
 
     Private Sub CreateNewTab()
-        EnsurePlusTab()
-
-        ' Number from current content tab count (close Tab 2 → next new tab is Tab 2 again)
-        Dim session = _workspace.AddTab()
-        Dim name = session.Name
-
-        Dim page As New TabPage(name) With {
-            .UseVisualStyleBackColor = True,
-            .Padding = New Padding(0)
-        }
-        Dim canvas As New ScreenshotCanvas(session)
-        AddHandler canvas.SelectionChanged, AddressOf OnCanvasSelectionChanged
-        AddHandler canvas.TransformChanged, AddressOf OnCanvasTransformChanged
-
-        Dim drawStrip As New DrawingToolStrip()
-        WireDrawingStrip(drawStrip, canvas)
-
-        ' Dock: Fill first, then Top so the drawing bar sits under tab headers
-        page.Controls.Add(canvas)
-        page.Controls.Add(drawStrip)
-
-        Dim insertAt = PlusTabIndex()
-        If insertAt < 0 Then
-            tabControl.TabPages.Add(page)
+        ' Selecting + MouseDown both schedule this via BeginInvoke — only create once.
+        If _creatingTab Then Return
+        _creatingTab = True
+        Try
             EnsurePlusTab()
-        Else
-            tabControl.TabPages.Insert(insertAt, page)
+
+            ' Number from current content tab count (close Tab 2 → next new tab is Tab 2 again)
+            Dim session = _workspace.AddTab()
+            Dim name = session.Name
+
+            Dim page As New TabPage(name) With {
+                .UseVisualStyleBackColor = True,
+                .Padding = New Padding(0)
+            }
+            Dim canvas As New ScreenshotCanvas(session)
+            AddHandler canvas.SelectionChanged, AddressOf OnCanvasSelectionChanged
+            AddHandler canvas.TransformChanged, AddressOf OnCanvasTransformChanged
+
+            Dim drawStrip As New DrawingToolStrip()
+            WireDrawingStrip(drawStrip, canvas)
+
+            ' Dock: Fill first, then Top so the drawing bar sits under tab headers
+            page.Controls.Add(canvas)
+            page.Controls.Add(drawStrip)
+
+            Dim insertAt = PlusTabIndex()
+            If insertAt < 0 Then
+                tabControl.TabPages.Add(page)
+                EnsurePlusTab()
+            Else
+                tabControl.TabPages.Insert(insertAt, page)
+            End If
+
+            ' Force the new content tab to be active so capture/draw land here.
+            SelectContentTab(page)
+            UpdateTabItemSize()
+            UpdateStatus()
+        Finally
+            _creatingTab = False
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Selects a content tab and keeps workspace index in sync. Never leaves "+" selected.
+    ''' </summary>
+    Private Sub SelectContentTab(page As TabPage)
+        If page Is Nothing OrElse IsPlusPage(page) Then Return
+        If Not tabControl.TabPages.Contains(page) Then Return
+
+        If Not Object.ReferenceEquals(tabControl.SelectedTab, page) Then
+            tabControl.SelectedTab = page
+        End If
+        ' If selection still stuck (e.g. after a cancelled Selecting), try by index.
+        If Not Object.ReferenceEquals(tabControl.SelectedTab, page) Then
+            Dim idx = tabControl.TabPages.IndexOf(page)
+            If idx >= 0 Then tabControl.SelectedIndex = idx
         End If
 
-        tabControl.SelectedTab = page
         SyncWorkspaceActiveIndex()
-        UpdateTabItemSize()
-        UpdateStatus()
+        tabControl.Invalidate()
     End Sub
 
     Private Sub EnsurePlusTab()
