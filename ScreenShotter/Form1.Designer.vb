@@ -35,7 +35,7 @@ Partial Class frmScreenShotter
         btnZoomIn = New ToolStripButton()
         statusStrip = New StatusStrip()
         statusLabel = New ToolStripStatusLabel()
-        tabControl = New TabControl()
+        tabControl = New ModernTabControl()
         menuStrip.SuspendLayout()
         toolStrip.SuspendLayout()
         statusStrip.SuspendLayout()
@@ -147,13 +147,10 @@ Partial Class frmScreenShotter
         'tabControl
         '
         tabControl.Dock = DockStyle.Fill
-        tabControl.DrawMode = TabDrawMode.OwnerDrawFixed
-        tabControl.ItemSize = New Size(110, 24)
         tabControl.Location = New Point(0, 52)
         tabControl.Name = "tabControl"
         tabControl.SelectedIndex = 0
         tabControl.Size = New Size(1000, 476)
-        tabControl.SizeMode = TabSizeMode.Fixed
         tabControl.TabIndex = 2
         '
         'frmScreenShotter
@@ -194,5 +191,5 @@ Partial Class frmScreenShotter
     Friend WithEvents btnZoomIn As ToolStripButton
     Friend WithEvents statusStrip As StatusStrip
     Friend WithEvents statusLabel As ToolStripStatusLabel
-    Friend WithEvents tabControl As TabControl
+    Friend WithEvents tabControl As ModernTabControl
 End Class

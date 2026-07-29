@@ -1,16 +1,10 @@
 ﻿Public Class frmScreenShotter
     Private ReadOnly _workspace As New WorkspaceModel()
 
-    ''' <summary>Tag value for the trailing "+" tab used to create new tabs.</summary>
-    Private Const NewTabTag As String = "new-tab-placeholder"
-
-    ''' <summary>Hit padding around the close glyph in tab headers.</summary>
-    Private Const CloseHitPad As Integer = 4
-
-    ''' <summary>True while inserting/selecting a tab so Selecting handlers do not re-enter.</summary>
+    ''' <summary>True while inserting/selecting a tab so handlers do not re-enter.</summary>
     Private _creatingTab As Boolean
 
-    ''' <summary>True when a deferred CreateNewTab is already scheduled (MouseDown + Selecting).</summary>
+    ''' <summary>True when a deferred CreateNewTab is already scheduled.</summary>
     Private _newTabQueued As Boolean
 
     Private Sub frmScreenShotter_Load(sender As Object, e As EventArgs) Handles MyBase.Load
@@ -22,7 +16,6 @@
         KeyPreview = True
         ApplyApplicationIcon()
 
-        EnsurePlusTab()
         CreateNewTab()
         UpdateStatus()
     End Sub
@@ -132,54 +125,31 @@
         UpdateStatus()
     End Sub
 
-    ''' <summary>
-    ''' Keep workspace index aligned with real content tabs (skip the trailing +).
-    ''' </summary>
     Private Sub SyncWorkspaceActiveIndex()
-        Dim contentIndex = ContentTabIndex(tabControl.SelectedIndex)
-        If contentIndex >= 0 AndAlso contentIndex < _workspace.Tabs.Count Then
-            _workspace.ActiveTabIndex = contentIndex
+        Dim index = tabControl.SelectedIndex
+        If index >= 0 AndAlso index < _workspace.Tabs.Count Then
+            _workspace.ActiveTabIndex = index
         End If
     End Sub
 
     Private Sub tabControl_MouseDoubleClick(sender As Object, e As MouseEventArgs) Handles tabControl.MouseDoubleClick
-        Dim index = HitTestTabIndex(e.Location)
-        If index < 0 OrElse IsPlusTab(index) Then Return
+        Dim index = tabControl.HitTestTabIndex(e.Location)
+        If index < 0 Then Return
         ' Don't rename when the double-click lands on the close glyph
-        If GetCloseButtonRect(index).Contains(e.Location) Then Return
+        If tabControl.GetCloseButtonRect(index).Contains(e.Location) Then Return
         RenameTabAt(index)
     End Sub
 
-    Private Sub tabControl_Selecting(sender As Object, e As TabControlCancelEventArgs) Handles tabControl.Selecting
-        If _creatingTab Then Return
-        If e.TabPage Is Nothing Then Return
-        If IsPlusPage(e.TabPage) Then
-            ' Never leave the + tab selected. Create the real tab after this event finishes —
-            ' setting SelectedTab during Selecting is unreliable in WinForms.
-            e.Cancel = True
-            QueueCreateNewTab()
-        End If
+    Private Sub tabControl_RequestNewTab(sender As Object, e As EventArgs) Handles tabControl.RequestNewTab
+        QueueCreateNewTab()
     End Sub
 
-    Private Sub tabControl_MouseDown(sender As Object, e As MouseEventArgs) Handles tabControl.MouseDown
-        If e.Button <> MouseButtons.Left Then Return
-        Dim index = HitTestTabIndex(e.Location)
-        If index < 0 Then Return
-
-        If IsPlusTab(index) Then
-            ' Backup path if Selecting did not run (owner-draw quirks). Deferred to avoid re-entry.
-            QueueCreateNewTab()
-            Return
-        End If
-
-        ' Close glyph only
-        If GetCloseButtonRect(index).Contains(e.Location) Then
-            CloseTabAt(index)
-        End If
+    Private Sub tabControl_RequestCloseTab(sender As Object, e As TabCloseEventArgs) Handles tabControl.RequestCloseTab
+        CloseTabAt(e.TabIndex)
     End Sub
 
     ''' <summary>
-    ''' Schedules CreateNewTab once after the current UI event (Selecting/MouseDown) completes.
+    ''' Schedules CreateNewTab once after the current UI event completes.
     ''' </summary>
     Private Sub QueueCreateNewTab()
         If _creatingTab OrElse _newTabQueued Then Return
@@ -191,79 +161,17 @@
             End Sub))
     End Sub
 
-    Private Sub tabControl_DrawItem(sender As Object, e As DrawItemEventArgs) Handles tabControl.DrawItem
-        If e.Index < 0 OrElse e.Index >= tabControl.TabCount Then Return
-
-        Dim page = tabControl.TabPages(e.Index)
-        Dim bounds = e.Bounds
-        Dim selected = (e.State And DrawItemState.Selected) = DrawItemState.Selected
-        Dim isPlus = IsPlusPage(page)
-
-        Using backBrush As New SolidBrush(If(selected, SystemColors.Window, SystemColors.Control))
-            e.Graphics.FillRectangle(backBrush, bounds)
-        End Using
-
-        ' Subtle border under the header
-        Using pen As New Pen(SystemColors.ControlDark)
-            e.Graphics.DrawLine(pen, bounds.Left, bounds.Bottom - 1, bounds.Right, bounds.Bottom - 1)
-        End Using
-
-        Dim textColor = If(selected, SystemColors.ControlText, SystemColors.GrayText)
-        Dim flags = TextFormatFlags.HorizontalCenter Or
-                    TextFormatFlags.VerticalCenter Or
-                    TextFormatFlags.EndEllipsis Or
-                    TextFormatFlags.NoPadding
-
-        If isPlus Then
-            TextRenderer.DrawText(
-                e.Graphics,
-                "+",
-                New Font(Font, FontStyle.Bold),
-                bounds,
-                textColor,
-                flags)
-            Return
-        End If
-
-        Dim closeRect = GetCloseButtonRect(index:=e.Index, tabBounds:=bounds)
-        Dim textRect = New Rectangle(
-            bounds.Left + 6,
-            bounds.Top,
-            Math.Max(8, closeRect.Left - bounds.Left - 8),
-            bounds.Height)
-
-        TextRenderer.DrawText(
-            e.Graphics,
-            page.Text,
-            Font,
-            textRect,
-            textColor,
-            TextFormatFlags.Left Or TextFormatFlags.VerticalCenter Or TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPadding)
-
-        ' Close glyph (×)
-        Dim closeColor = If(selected, SystemColors.ControlText, SystemColors.GrayText)
-        TextRenderer.DrawText(
-            e.Graphics,
-            "×",
-            Font,
-            closeRect,
-            closeColor,
-            TextFormatFlags.HorizontalCenter Or TextFormatFlags.VerticalCenter Or TextFormatFlags.NoPadding)
-    End Sub
-
     Private Sub CreateNewTab()
-        ' Selecting + MouseDown both schedule this via BeginInvoke — only create once.
         If _creatingTab Then Return
         _creatingTab = True
         Try
-            EnsurePlusTab()
-
-            ' Number from current content tab count (close Tab 2 → next new tab is Tab 2 again)
+            ' Number from current tab count (close Tab 2 → next new tab is Tab 2 again)
             Dim session = _workspace.AddTab()
             Dim name = session.Name
 
             Dim page As New TabPage(name) With {
-                .UseVisualStyleBackColor = True,
+                .UseVisualStyleBackColor = False,
+                .BackColor = Color.FromArgb(245, 245, 248),
                 .Padding = New Padding(0)
             }
             Dim canvas As New ScreenshotCanvas(session)
@@ -277,17 +185,9 @@
             page.Controls.Add(canvas)
             page.Controls.Add(drawStrip)
 
-            Dim insertAt = PlusTabIndex()
-            If insertAt < 0 Then
-                tabControl.TabPages.Add(page)
-                EnsurePlusTab()
-            Else
-                tabControl.TabPages.Insert(insertAt, page)
-            End If
-
-            ' Force the new content tab to be active so capture/draw land here.
+            tabControl.TabPages.Add(page)
             SelectContentTab(page)
-            UpdateTabItemSize()
+            tabControl.UpdateTabItemSize()
             UpdateStatus()
         Finally
             _creatingTab = False
@@ -295,16 +195,15 @@
     End Sub
 
     ''' <summary>
-    ''' Selects a content tab and keeps workspace index in sync. Never leaves "+" selected.
+    ''' Selects a content tab and keeps workspace index in sync.
     ''' </summary>
     Private Sub SelectContentTab(page As TabPage)
-        If page Is Nothing OrElse IsPlusPage(page) Then Return
+        If page Is Nothing Then Return
         If Not tabControl.TabPages.Contains(page) Then Return
 
         If Not Object.ReferenceEquals(tabControl.SelectedTab, page) Then
             tabControl.SelectedTab = page
         End If
-        ' If selection still stuck (e.g. after a cancelled Selecting), try by index.
         If Not Object.ReferenceEquals(tabControl.SelectedTab, page) Then
             Dim idx = tabControl.TabPages.IndexOf(page)
             If idx >= 0 Then tabControl.SelectedIndex = idx
@@ -313,75 +212,6 @@
         SyncWorkspaceActiveIndex()
         tabControl.Invalidate()
     End Sub
-
-    Private Sub EnsurePlusTab()
-        Dim plusIndex = PlusTabIndex()
-        If plusIndex >= 0 Then
-            ' Keep the placeholder last
-            If plusIndex <> tabControl.TabCount - 1 Then
-                Dim plusPage = tabControl.TabPages(plusIndex)
-                tabControl.TabPages.RemoveAt(plusIndex)
-                tabControl.TabPages.Add(plusPage)
-            End If
-            Return
-        End If
-
-        Dim plus As New TabPage("+") With {
-            .Tag = NewTabTag,
-            .ToolTipText = "New tab",
-            .UseVisualStyleBackColor = True
-        }
-        tabControl.TabPages.Add(plus)
-        UpdateTabItemSize()
-    End Sub
-
-    Private Sub UpdateTabItemSize()
-        ' Fixed owner-draw width: enough room for name + close glyph (or just "+")
-        Dim w = 110
-        Using g = tabControl.CreateGraphics()
-            For Each page As TabPage In tabControl.TabPages
-                If IsPlusPage(page) Then
-                    w = Math.Max(w, 36)
-                    Continue For
-                End If
-                Dim textW = TextRenderer.MeasureText(g, page.Text, Font).Width
-                w = Math.Max(w, Math.Min(220, textW + 36))
-            Next
-        End Using
-        Dim nextSize As New Size(w, 24)
-        If tabControl.ItemSize <> nextSize Then
-            tabControl.ItemSize = nextSize
-        End If
-    End Sub
-
-    Private Function IsPlusTab(index As Integer) As Boolean
-        If index < 0 OrElse index >= tabControl.TabCount Then Return False
-        Return IsPlusPage(tabControl.TabPages(index))
-    End Function
-
-    Private Shared Function IsPlusPage(page As TabPage) As Boolean
-        If page Is Nothing Then Return False
-        Return TypeOf page.Tag Is String AndAlso String.Equals(CStr(page.Tag), NewTabTag, StringComparison.Ordinal)
-    End Function
-
-    Private Function PlusTabIndex() As Integer
-        For i = 0 To tabControl.TabCount - 1
-            If IsPlusTab(i) Then Return i
-        Next
-        Return -1
-    End Function
-
-    ''' <summary>
-    ''' Maps a TabControl index to the workspace content index (skips the + tab).
-    ''' </summary>
-    Private Function ContentTabIndex(tabIndex As Integer) As Integer
-        If tabIndex < 0 OrElse IsPlusTab(tabIndex) Then Return -1
-        Dim plus = PlusTabIndex()
-        If plus >= 0 AndAlso tabIndex > plus Then
-            Return tabIndex - 1
-        End If
-        Return tabIndex
-    End Function
 
     Private Sub WireDrawingStrip(drawStrip As DrawingToolStrip, canvas As ScreenshotCanvas)
         AddHandler drawStrip.SettingsChanged,
@@ -396,28 +226,8 @@
         canvas.ApplyDrawingSettings(drawStrip.ActiveTool, drawStrip.Settings)
     End Sub
 
-    ''' <summary>
-    ''' Which tab header contains the client point, or -1.
-    ''' </summary>
-    Private Function HitTestTabIndex(clientPoint As Point) As Integer
-        For i = 0 To tabControl.TabCount - 1
-            If tabControl.GetTabRect(i).Contains(clientPoint) Then
-                Return i
-            End If
-        Next
-        Return -1
-    End Function
-
-    Private Function GetCloseButtonRect(index As Integer, Optional tabBounds As Rectangle? = Nothing) As Rectangle
-        Dim bounds = If(tabBounds, tabControl.GetTabRect(index))
-        Dim size = 14
-        Dim x = bounds.Right - size - 6
-        Dim y = bounds.Top + (bounds.Height - size) \ 2
-        Return New Rectangle(x - CloseHitPad, y - CloseHitPad, size + CloseHitPad * 2, size + CloseHitPad * 2)
-    End Function
-
     Private Sub RenameTabAt(index As Integer)
-        If index < 0 OrElse index >= tabControl.TabPages.Count OrElse IsPlusTab(index) Then Return
+        If index < 0 OrElse index >= tabControl.TabPages.Count Then Return
 
         Dim page = tabControl.TabPages(index)
         Dim proposed = Interaction.InputBox(
@@ -432,28 +242,21 @@
         End If
 
         page.Text = normalized
-        Dim contentIndex = ContentTabIndex(index)
-        If contentIndex >= 0 Then
-            _workspace.RenameTabAt(contentIndex, normalized)
-        End If
-        UpdateTabItemSize()
+        _workspace.RenameTabAt(index, normalized)
+        tabControl.UpdateTabItemSize()
         UpdateStatus()
     End Sub
 
     Private Sub CloseTabAt(index As Integer)
-        If index < 0 OrElse IsPlusTab(index) Then Return
+        If index < 0 OrElse index >= tabControl.TabCount Then Return
 
-        Dim contentIndex = ContentTabIndex(index)
-        If contentIndex < 0 Then Return
-
-        Dim contentCount = ContentTabCount()
-        If contentCount <= 1 Then
-            ' Last real tab: clear contents but keep the header title
+        If tabControl.TabCount <= 1 Then
+            ' Last tab: clear contents but keep the header title
             Dim page = tabControl.TabPages(index)
             Dim keptTitle = page.Text
             DisposePageControls(page)
 
-            _workspace.RemoveTabAt(contentIndex)
+            _workspace.RemoveTabAt(index)
             Dim session = _workspace.AddTab(keptTitle)
             Dim canvas As New ScreenshotCanvas(session)
             AddHandler canvas.SelectionChanged, AddressOf OnCanvasSelectionChanged
@@ -467,6 +270,7 @@
             tabControl.SelectedTab = page
             SyncWorkspaceActiveIndex()
             statusLabel.Text = "Tab cleared (last tab cannot be closed)"
+            tabControl.UpdateTabItemSize()
             UpdateStatus()
             Return
         End If
@@ -474,37 +278,16 @@
         Dim closingPage = tabControl.TabPages(index)
         DisposePageControls(closingPage)
         tabControl.TabPages.RemoveAt(index)
-        _workspace.RemoveTabAt(contentIndex)
+        _workspace.RemoveTabAt(index)
 
-        ' Prefer a neighboring content tab after close
-        Dim nextContent = Math.Min(contentIndex, ContentTabCount() - 1)
-        Dim selectIndex = ContentIndexToTabIndex(nextContent)
-        If selectIndex >= 0 Then
-            tabControl.SelectedIndex = selectIndex
+        Dim nextIndex = Math.Min(index, tabControl.TabCount - 1)
+        If nextIndex >= 0 Then
+            tabControl.SelectedIndex = nextIndex
         End If
-        EnsurePlusTab()
         SyncWorkspaceActiveIndex()
-        UpdateTabItemSize()
+        tabControl.UpdateTabItemSize()
         UpdateStatus()
     End Sub
-
-    Private Function ContentTabCount() As Integer
-        Dim n = 0
-        For i = 0 To tabControl.TabCount - 1
-            If Not IsPlusTab(i) Then n += 1
-        Next
-        Return n
-    End Function
-
-    Private Function ContentIndexToTabIndex(contentIndex As Integer) As Integer
-        Dim seen = 0
-        For i = 0 To tabControl.TabCount - 1
-            If IsPlusTab(i) Then Continue For
-            If seen = contentIndex Then Return i
-            seen += 1
-        Next
-        Return -1
-    End Function
 
     Private Shared Sub DisposePageControls(page As TabPage)
         For Each ctrl As Control In page.Controls.Cast(Of Control)().ToList()
@@ -560,7 +343,7 @@
 
     Private Function GetActiveCanvas() As ScreenshotCanvas
         Dim page = tabControl.SelectedTab
-        If page Is Nothing OrElse IsPlusPage(page) Then Return Nothing
+        If page Is Nothing Then Return Nothing
         For Each ctrl As Control In page.Controls
             Dim canvas = TryCast(ctrl, ScreenshotCanvas)
             If canvas IsNot Nothing Then Return canvas
@@ -639,11 +422,9 @@
     Private Sub UpdateStatus()
         Dim canvas = GetActiveCanvas()
         Dim count = If(canvas IsNot Nothing, canvas.Session.Items.Count, 0)
-        Dim tabName = If(tabControl.SelectedTab IsNot Nothing AndAlso Not IsPlusPage(tabControl.SelectedTab),
-            tabControl.SelectedTab.Text, "—")
+        Dim tabName = If(tabControl.SelectedTab IsNot Nothing, tabControl.SelectedTab.Text, "—")
         Dim box = canvas?.SelectedBox
         If box IsNot Nothing Then
-            Dim nat = box.NaturalSize
             Dim zoomTxt = ZoomHelper.FormatZoomPercent(box.Zoom)
             Dim tool = If(canvas IsNot Nothing, DrawingHelper.ToolDisplayName(canvas.ActiveTool), "Pointer")
             Dim ink = ""

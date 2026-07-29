@@ -32,12 +32,12 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 | **New Screenshot** | Minimize the app, show a full-screen dimmed overlay, drag to capture a region |
 | **−** / **100%** / **+** | Zoom out, reset to 100%, or zoom in the **selected** screenshot |
 
-**Tabs**
+**Tabs** (dark pill chrome)
 
 | Control | Action |
 |---------|--------|
-| **+** (after the last tab) | Open a new empty tab |
-| **×** on a tab | Close that tab (last tab is cleared instead of removed) |
+| Circular **+** (after the last tab) | Open a new empty tab |
+| Circular **×** on a tab | Close that tab (last tab is cleared instead of removed) |
 | **Double-click** a tab title | Rename the tab |
 
 **Keyboard**
