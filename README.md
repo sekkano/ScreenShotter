@@ -25,14 +25,22 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 | **Save** (Ctrl+S) | Export everything on the **current tab** as one image (PNG / JPEG / BMP) |
 | **Exit** | Close the application |
 
-**Toolbar**
+**Layout (top → bottom)**
+
+1. **File** menu  
+2. **Tabs** (dark pill chrome)  
+3. **New Screenshot** / zoom toolbar  
+4. Drawing toolbar  
+5. Canvas  
+
+**Toolbar** (under the tabs)
 
 | Control | Action |
 |--------|--------|
 | **New Screenshot** | Minimize the app, show a full-screen dimmed overlay, drag to capture a region |
 | **−** / **100%** / **+** | Zoom out, reset to 100%, or zoom in the **selected** screenshot |
 
-**Tabs** (dark pill chrome)
+**Tabs** (light pill chrome)
 
 | Control | Action |
 |---------|--------|

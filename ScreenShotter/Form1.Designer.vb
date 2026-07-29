@@ -76,18 +76,18 @@ Partial Class frmScreenShotter
         menuExit.Size = New Size(180, 22)
         menuExit.Text = "E&xit"
         '
-        'toolStrip
+        'toolStrip (hosted under tab headers inside each TabPage at runtime)
         '
         toolStrip.GripStyle = ToolStripGripStyle.Hidden
         toolStrip.Items.AddRange(New ToolStripItem() {
             btnCapture, toolStripSeparator1,
             btnZoomOut, btnZoomReset, btnZoomIn})
-        toolStrip.Location = New Point(0, 24)
         toolStrip.Name = "toolStrip"
         toolStrip.Padding = New Padding(6, 2, 6, 2)
         toolStrip.Size = New Size(1000, 28)
         toolStrip.TabIndex = 1
         toolStrip.Text = "toolStrip"
+        toolStrip.Dock = DockStyle.Top
         '
         'btnCapture
         '
@@ -147,20 +147,20 @@ Partial Class frmScreenShotter
         'tabControl
         '
         tabControl.Dock = DockStyle.Fill
-        tabControl.Location = New Point(0, 52)
+        tabControl.Location = New Point(0, 24)
         tabControl.Name = "tabControl"
         tabControl.SelectedIndex = 0
-        tabControl.Size = New Size(1000, 476)
-        tabControl.TabIndex = 2
+        tabControl.Size = New Size(1000, 504)
+        tabControl.TabIndex = 1
         '
         'frmScreenShotter
         '
         AutoScaleDimensions = New SizeF(7.0F, 15.0F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1000, 550)
+        ' toolStrip is parented under the active tab page (below tab headers)
         Controls.Add(tabControl)
         Controls.Add(statusStrip)
-        Controls.Add(toolStrip)
         Controls.Add(menuStrip)
         MainMenuStrip = menuStrip
         MinimumSize = New Size(480, 320)

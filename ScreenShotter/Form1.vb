@@ -8,11 +8,11 @@
     Private _newTabQueued As Boolean
 
     Private Sub frmScreenShotter_Load(sender As Object, e As EventArgs) Handles MyBase.Load
-        ' Responsive chrome: menu + toolstrip top, status bottom, tabs fill remainder
+        ' Menu top → tabs → (inside page) capture/zoom + drawing → canvas → status
         menuStrip.Dock = DockStyle.Top
-        toolStrip.Dock = DockStyle.Top
         statusStrip.Dock = DockStyle.Bottom
         tabControl.Dock = DockStyle.Fill
+        toolStrip.Dock = DockStyle.Top
         KeyPreview = True
         ApplyApplicationIcon()
 
@@ -121,6 +121,7 @@
     End Sub
 
     Private Sub tabControl_SelectedIndexChanged(sender As Object, e As EventArgs) Handles tabControl.SelectedIndexChanged
+        AttachMainToolbar(tabControl.SelectedTab)
         SyncWorkspaceActiveIndex()
         UpdateStatus()
     End Sub
@@ -181,9 +182,10 @@
             Dim drawStrip As New DrawingToolStrip()
             WireDrawingStrip(drawStrip, canvas)
 
-            ' Dock: Fill first, then Top so the drawing bar sits under tab headers
-            page.Controls.Add(canvas)
-            page.Controls.Add(drawStrip)
+            ' Host panel keeps toolbar / draw / canvas docking stable so the canvas
+            ' always fills remaining space (never covered by the toolbars).
+            Dim host = CreateTabContentHost(canvas, drawStrip)
+            page.Controls.Add(host)
 
             tabControl.TabPages.Add(page)
             SelectContentTab(page)
@@ -192,6 +194,87 @@
         Finally
             _creatingTab = False
         End Try
+    End Sub
+
+    ''' <summary>
+    ''' Builds the in-tab layout with dedicated rows so the canvas never sits under the toolbars:
+    ''' row0 capture/zoom · row1 drawing · row2 canvas (100%).
+    ''' </summary>
+    Private Function CreateTabContentHost(canvas As ScreenshotCanvas, drawStrip As DrawingToolStrip) As TableLayoutPanel
+        Dim host As New TableLayoutPanel With {
+            .Dock = DockStyle.Fill,
+            .ColumnCount = 1,
+            .RowCount = 3,
+            .Margin = Padding.Empty,
+            .Padding = Padding.Empty,
+            .BackColor = Color.FromArgb(245, 245, 248),
+            .Tag = TabHostTag
+        }
+        host.ColumnStyles.Clear()
+        host.ColumnStyles.Add(New ColumnStyle(SizeType.Percent, 100.0F))
+        host.RowStyles.Clear()
+        host.RowStyles.Add(New RowStyle(SizeType.AutoSize))           ' capture / zoom
+        host.RowStyles.Add(New RowStyle(SizeType.AutoSize))           ' drawing tools
+        host.RowStyles.Add(New RowStyle(SizeType.Percent, 100.0F))    ' canvas
+
+        canvas.Dock = DockStyle.Fill
+        canvas.Margin = Padding.Empty
+        drawStrip.Dock = DockStyle.Top
+        drawStrip.Margin = Padding.Empty
+        drawStrip.AutoSize = True
+
+        ' Row 0 left empty until AttachMainToolbar places the shared toolStrip
+        host.Controls.Add(drawStrip, 0, 1)
+        host.Controls.Add(canvas, 0, 2)
+        Return host
+    End Function
+
+    Private Const TabHostTag As String = "tab-content-host"
+
+    Private Function GetTabContentHost(page As TabPage) As TableLayoutPanel
+        If page Is Nothing Then Return Nothing
+        For Each ctrl As Control In page.Controls
+            Dim host = TryCast(ctrl, TableLayoutPanel)
+            If host IsNot Nothing AndAlso
+               TypeOf host.Tag Is String AndAlso
+               String.Equals(CStr(host.Tag), TabHostTag, StringComparison.Ordinal) Then
+                Return host
+            End If
+        Next
+        Return Nothing
+    End Function
+
+    ''' <summary>
+    ''' Places New Screenshot / zoom in row 0 of the active host (above drawing + canvas).
+    ''' </summary>
+    Private Sub AttachMainToolbar(page As TabPage)
+        Dim host = GetTabContentHost(page)
+        If host Is Nothing Then Return
+        toolStrip.Dock = DockStyle.Top
+        toolStrip.GripStyle = ToolStripGripStyle.Hidden
+        toolStrip.Margin = Padding.Empty
+        toolStrip.AutoSize = True
+        toolStrip.Visible = True
+        If toolStrip.Parent IsNot host Then
+            host.Controls.Add(toolStrip, 0, 0)
+        Else
+            host.SetRow(toolStrip, 0)
+            host.SetColumn(toolStrip, 0)
+        End If
+        host.PerformLayout()
+    End Sub
+
+    ''' <summary>
+    ''' Unparent the shared toolbar before disposing a page (do not dispose the toolbar).
+    ''' </summary>
+    Private Sub DetachMainToolbarIfOn(page As TabPage)
+        If page Is Nothing Then Return
+        Dim host = GetTabContentHost(page)
+        If host IsNot Nothing AndAlso toolStrip.Parent Is host Then
+            host.Controls.Remove(toolStrip)
+        ElseIf toolStrip.Parent Is page Then
+            page.Controls.Remove(toolStrip)
+        End If
     End Sub
 
     ''' <summary>
@@ -209,6 +292,7 @@
             If idx >= 0 Then tabControl.SelectedIndex = idx
         End If
 
+        AttachMainToolbar(page)
         SyncWorkspaceActiveIndex()
         tabControl.Invalidate()
     End Sub
@@ -254,6 +338,7 @@
             ' Last tab: clear contents but keep the header title
             Dim page = tabControl.TabPages(index)
             Dim keptTitle = page.Text
+            DetachMainToolbarIfOn(page)
             DisposePageControls(page)
 
             _workspace.RemoveTabAt(index)
@@ -265,9 +350,10 @@
             Dim drawStrip As New DrawingToolStrip()
             WireDrawingStrip(drawStrip, canvas)
 
-            page.Controls.Add(canvas)
-            page.Controls.Add(drawStrip)
+            Dim host = CreateTabContentHost(canvas, drawStrip)
+            page.Controls.Add(host)
             tabControl.SelectedTab = page
+            AttachMainToolbar(page)
             SyncWorkspaceActiveIndex()
             statusLabel.Text = "Tab cleared (last tab cannot be closed)"
             tabControl.UpdateTabItemSize()
@@ -276,6 +362,7 @@
         End If
 
         Dim closingPage = tabControl.TabPages(index)
+        DetachMainToolbarIfOn(closingPage)
         DisposePageControls(closingPage)
         tabControl.TabPages.RemoveAt(index)
         _workspace.RemoveTabAt(index)
@@ -284,13 +371,25 @@
         If nextIndex >= 0 Then
             tabControl.SelectedIndex = nextIndex
         End If
+        AttachMainToolbar(tabControl.SelectedTab)
         SyncWorkspaceActiveIndex()
         tabControl.UpdateTabItemSize()
         UpdateStatus()
     End Sub
 
-    Private Shared Sub DisposePageControls(page As TabPage)
+    Private Sub DisposePageControls(page As TabPage)
+        ' Never dispose the shared capture/zoom toolbar
+        DetachMainToolbarIfOn(page)
         For Each ctrl As Control In page.Controls.Cast(Of Control)().ToList()
+            If Object.ReferenceEquals(ctrl, toolStrip) Then Continue For
+            Dim host = TryCast(ctrl, TableLayoutPanel)
+            If host IsNot Nothing Then
+                For Each child As Control In host.Controls.Cast(Of Control)().ToList()
+                    If Object.ReferenceEquals(child, toolStrip) Then Continue For
+                    child.Dispose()
+                Next
+                host.Controls.Clear()
+            End If
             ctrl.Dispose()
         Next
         page.Controls.Clear()
@@ -344,9 +443,20 @@
     Private Function GetActiveCanvas() As ScreenshotCanvas
         Dim page = tabControl.SelectedTab
         If page Is Nothing Then Return Nothing
+        Dim host = GetTabContentHost(page)
+        Dim searchIn As Control = If(host, CType(page, Control))
+        For Each ctrl As Control In searchIn.Controls
+            Dim canvas = TryCast(ctrl, ScreenshotCanvas)
+            If canvas IsNot Nothing Then Return canvas
+        Next
+        ' Fallback: nested one level if host layout changes
         For Each ctrl As Control In page.Controls
             Dim canvas = TryCast(ctrl, ScreenshotCanvas)
             If canvas IsNot Nothing Then Return canvas
+            For Each child As Control In ctrl.Controls
+                canvas = TryCast(child, ScreenshotCanvas)
+                If canvas IsNot Nothing Then Return canvas
+            Next
         Next
         Return Nothing
     End Function
