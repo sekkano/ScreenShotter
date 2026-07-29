@@ -18,40 +18,75 @@ Partial Class frmScreenShotter
     Private components As System.ComponentModel.IContainer
 
     'NOTE: The following procedure is required by the Windows Form Designer
-    'It can be modified using the Windows Form Designer.  
+    'It can be modified using the Windows Form Designer.
     'Do not modify it using the code editor.
     <System.Diagnostics.DebuggerStepThrough()>
     Private Sub InitializeComponent()
+        menuStrip = New MenuStrip()
+        menuFile = New ToolStripMenuItem()
+        menuSave = New ToolStripMenuItem()
+        menuFileSeparator = New ToolStripSeparator()
+        menuExit = New ToolStripMenuItem()
         toolStrip = New ClickThroughToolStrip()
         btnCapture = New ToolStripButton()
         toolStripSeparator1 = New ToolStripSeparator()
-        btnSave = New ToolStripButton()
-        toolStripSeparatorSave = New ToolStripSeparator()
-        btnNewTab = New ToolStripButton()
-        btnCloseTab = New ToolStripButton()
-        toolStripSeparator2 = New ToolStripSeparator()
         btnZoomOut = New ToolStripButton()
         btnZoomReset = New ToolStripButton()
         btnZoomIn = New ToolStripButton()
         statusStrip = New StatusStrip()
         statusLabel = New ToolStripStatusLabel()
         tabControl = New TabControl()
+        menuStrip.SuspendLayout()
         toolStrip.SuspendLayout()
         statusStrip.SuspendLayout()
         SuspendLayout()
+        '
+        'menuStrip
+        '
+        menuStrip.Items.AddRange(New ToolStripItem() {menuFile})
+        menuStrip.Location = New Point(0, 0)
+        menuStrip.Name = "menuStrip"
+        menuStrip.Size = New Size(1000, 24)
+        menuStrip.TabIndex = 0
+        menuStrip.Text = "menuStrip"
+        '
+        'menuFile
+        '
+        menuFile.DropDownItems.AddRange(New ToolStripItem() {menuSave, menuFileSeparator, menuExit})
+        menuFile.Name = "menuFile"
+        menuFile.Size = New Size(37, 20)
+        menuFile.Text = "&File"
+        '
+        'menuSave
+        '
+        menuSave.Name = "menuSave"
+        menuSave.ShortcutKeys = Keys.Control Or Keys.S
+        menuSave.Size = New Size(180, 22)
+        menuSave.Text = "&Save"
+        menuSave.ToolTipText = "Save everything on the current tab as an image"
+        '
+        'menuFileSeparator
+        '
+        menuFileSeparator.Name = "menuFileSeparator"
+        menuFileSeparator.Size = New Size(177, 6)
+        '
+        'menuExit
+        '
+        menuExit.Name = "menuExit"
+        menuExit.Size = New Size(180, 22)
+        menuExit.Text = "E&xit"
         '
         'toolStrip
         '
         toolStrip.GripStyle = ToolStripGripStyle.Hidden
         toolStrip.Items.AddRange(New ToolStripItem() {
-            btnCapture, toolStripSeparator1, btnSave, toolStripSeparatorSave,
-            btnNewTab, btnCloseTab,
-            toolStripSeparator2, btnZoomOut, btnZoomReset, btnZoomIn})
-        toolStrip.Location = New Point(0, 0)
+            btnCapture, toolStripSeparator1,
+            btnZoomOut, btnZoomReset, btnZoomIn})
+        toolStrip.Location = New Point(0, 24)
         toolStrip.Name = "toolStrip"
         toolStrip.Padding = New Padding(6, 2, 6, 2)
         toolStrip.Size = New Size(1000, 28)
-        toolStrip.TabIndex = 0
+        toolStrip.TabIndex = 1
         toolStrip.Text = "toolStrip"
         '
         'btnCapture
@@ -68,47 +103,13 @@ Partial Class frmScreenShotter
         toolStripSeparator1.Name = "toolStripSeparator1"
         toolStripSeparator1.Size = New Size(6, 26)
         '
-        'btnSave
-        '
-        btnSave.DisplayStyle = ToolStripItemDisplayStyle.Text
-        btnSave.Name = "btnSave"
-        btnSave.Size = New Size(71, 23)
-        btnSave.Text = "Save Tab"
-        btnSave.ToolTipText = "Save everything on the current tab as an image (Ctrl+S)"
-        '
-        'toolStripSeparatorSave
-        '
-        toolStripSeparatorSave.Name = "toolStripSeparatorSave"
-        toolStripSeparatorSave.Size = New Size(6, 26)
-        '
-        'btnNewTab
-        '
-        btnNewTab.DisplayStyle = ToolStripItemDisplayStyle.Text
-        btnNewTab.Name = "btnNewTab"
-        btnNewTab.Size = New Size(61, 23)
-        btnNewTab.Text = "New Tab"
-        btnNewTab.ToolTipText = "Open a new tab for independent screenshots"
-        '
-        'btnCloseTab
-        '
-        btnCloseTab.DisplayStyle = ToolStripItemDisplayStyle.Text
-        btnCloseTab.Name = "btnCloseTab"
-        btnCloseTab.Size = New Size(68, 23)
-        btnCloseTab.Text = "Close Tab"
-        btnCloseTab.ToolTipText = "Close the active tab"
-        '
-        'toolStripSeparator2
-        '
-        toolStripSeparator2.Name = "toolStripSeparator2"
-        toolStripSeparator2.Size = New Size(6, 26)
-        '
         'btnZoomOut
         '
         btnZoomOut.DisplayStyle = ToolStripItemDisplayStyle.Text
         btnZoomOut.Name = "btnZoomOut"
         btnZoomOut.Size = New Size(32, 23)
         btnZoomOut.Text = "−"
-        btnZoomOut.ToolTipText = "Zoom out selected screenshot (Ctrl+Wheel)"
+        btnZoomOut.ToolTipText = "Zoom out selected screenshot (Shift+Wheel)"
         '
         'btnZoomReset
         '
@@ -124,7 +125,7 @@ Partial Class frmScreenShotter
         btnZoomIn.Name = "btnZoomIn"
         btnZoomIn.Size = New Size(32, 23)
         btnZoomIn.Text = "+"
-        btnZoomIn.ToolTipText = "Zoom in selected screenshot (Ctrl+Wheel)"
+        btnZoomIn.ToolTipText = "Zoom in selected screenshot (Shift+Wheel)"
         '
         'statusStrip
         '
@@ -132,7 +133,7 @@ Partial Class frmScreenShotter
         statusStrip.Location = New Point(0, 528)
         statusStrip.Name = "statusStrip"
         statusStrip.Size = New Size(1000, 22)
-        statusStrip.TabIndex = 2
+        statusStrip.TabIndex = 3
         statusStrip.Text = "statusStrip"
         '
         'statusLabel
@@ -146,11 +147,14 @@ Partial Class frmScreenShotter
         'tabControl
         '
         tabControl.Dock = DockStyle.Fill
-        tabControl.Location = New Point(0, 28)
+        tabControl.DrawMode = TabDrawMode.OwnerDrawFixed
+        tabControl.ItemSize = New Size(110, 24)
+        tabControl.Location = New Point(0, 52)
         tabControl.Name = "tabControl"
         tabControl.SelectedIndex = 0
-        tabControl.Size = New Size(1000, 500)
-        tabControl.TabIndex = 1
+        tabControl.Size = New Size(1000, 476)
+        tabControl.SizeMode = TabSizeMode.Fixed
+        tabControl.TabIndex = 2
         '
         'frmScreenShotter
         '
@@ -160,11 +164,15 @@ Partial Class frmScreenShotter
         Controls.Add(tabControl)
         Controls.Add(statusStrip)
         Controls.Add(toolStrip)
+        Controls.Add(menuStrip)
+        MainMenuStrip = menuStrip
         MinimumSize = New Size(480, 320)
         Name = "frmScreenShotter"
         StartPosition = FormStartPosition.CenterScreen
         Text = "Screen Shotter"
         ' Icon is applied at runtime from ApplicationIcon (app.ico)
+        menuStrip.ResumeLayout(False)
+        menuStrip.PerformLayout()
         toolStrip.ResumeLayout(False)
         toolStrip.PerformLayout()
         statusStrip.ResumeLayout(False)
@@ -173,14 +181,14 @@ Partial Class frmScreenShotter
         PerformLayout()
     End Sub
 
+    Friend WithEvents menuStrip As MenuStrip
+    Friend WithEvents menuFile As ToolStripMenuItem
+    Friend WithEvents menuSave As ToolStripMenuItem
+    Friend WithEvents menuFileSeparator As ToolStripSeparator
+    Friend WithEvents menuExit As ToolStripMenuItem
     Friend WithEvents toolStrip As ClickThroughToolStrip
     Friend WithEvents btnCapture As ToolStripButton
     Friend WithEvents toolStripSeparator1 As ToolStripSeparator
-    Friend WithEvents btnSave As ToolStripButton
-    Friend WithEvents toolStripSeparatorSave As ToolStripSeparator
-    Friend WithEvents btnNewTab As ToolStripButton
-    Friend WithEvents btnCloseTab As ToolStripButton
-    Friend WithEvents toolStripSeparator2 As ToolStripSeparator
     Friend WithEvents btnZoomOut As ToolStripButton
     Friend WithEvents btnZoomReset As ToolStripButton
     Friend WithEvents btnZoomIn As ToolStripButton

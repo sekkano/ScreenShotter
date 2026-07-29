@@ -16,21 +16,35 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 
 ---
 
-## Main toolbar
+## Menus and toolbar
+
+**File menu**
+
+| Command | Action |
+|---------|--------|
+| **Save** (Ctrl+S) | Export everything on the **current tab** as one image (PNG / JPEG / BMP) |
+| **Exit** | Close the application |
+
+**Toolbar**
 
 | Control | Action |
 |--------|--------|
 | **New Screenshot** | Minimize the app, show a full-screen dimmed overlay, drag to capture a region |
-| **Save Tab** | Export everything on the **current tab** as one image (PNG / JPEG / BMP) |
-| **New Tab** | Open a new empty tab |
-| **Close Tab** | Close the active tab (last tab is cleared instead of removed) |
 | **−** / **100%** / **+** | Zoom out, reset to 100%, or zoom in the **selected** screenshot |
+
+**Tabs**
+
+| Control | Action |
+|---------|--------|
+| **+** (after the last tab) | Open a new empty tab |
+| **×** on a tab | Close that tab (last tab is cleared instead of removed) |
+| **Double-click** a tab title | Rename the tab |
 
 **Keyboard**
 
 | Shortcut | Action |
 |----------|--------|
-| **Ctrl+S** | Save Tab |
+| **Ctrl+S** | Save current tab |
 | **Ctrl+Z** | Undo (draw, move, resize, zoom, pan, add, delete) |
 | **Ctrl+Y** or **Ctrl+Shift+Z** | Redo |
 | **Delete** or **Backspace** | Delete the selected screenshot |
@@ -64,10 +78,10 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 ## Tabs
 
 - Each tab has its own set of screenshots and drawing settings.
-- **New Tab** names tabs by count: `Tab 1`, `Tab 2`, …  
+- Click the **+** tab to create a new tab. Names use the count: `Tab 1`, `Tab 2`, …  
   Closing a tab reuses the next free number (e.g. close Tab 2 → next new tab is Tab 2 again).
 - **Double-click** a tab title to **rename** it.
-- **Close Tab** on the last remaining tab clears its content instead of removing the tab.
+- Click **×** on a tab to close it. The last remaining tab is cleared instead of removed.
 
 ---
 
@@ -143,14 +157,14 @@ Each tool **remembers** its own color, opacity, and size when you switch back an
 - **Shift + draw** locks the stroke to a **straight horizontal** line.
 - You can hold **Shift** mid-stroke to snap the rest of the line horizontal.
 - Edge/corner **resize** still works while Draw is selected.
-- Drawings are included when you **Save Tab**.
+- Drawings are included when you **File → Save**.
 
 ---
 
 ## Saving
 
 1. Arrange screenshots and drawings on the current tab as you want them.
-2. **Save Tab** or **Ctrl+S**.
+2. **File → Save** or **Ctrl+S**.
 3. Choose PNG, JPEG, or BMP.
 
 The file is a **composite** of the tab:
@@ -214,7 +228,7 @@ dotnet test ScreenShotter.sln -c Debug
 ## Tips
 
 - Use **tabs** to keep unrelated snips separate (e.g. one tab per task).
-- **Save Tab** often if you’re building a collage of multiple snips + annotations.
+- **File → Save** often if you’re building a collage of multiple snips + annotations.
 - Prefer **PNG** for sharp UI captures; use **JPEG** for smaller photos/screens.
 - Large multi-monitor snips are full resolution; use zoom and scroll to navigate.
 
