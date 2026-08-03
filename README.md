@@ -77,9 +77,10 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 
 ### Where new snips appear
 
-- The first snip lands near the top-left of the canvas.
-- Later snips are placed **to the right** of the previous one.
-- If the row would get too wide, the next snip starts on a **new row below**.
+- The first snip lands near the top-left of the **visible** canvas.
+- Later snips go **to the right** of the previous one when their left edge still fits in the **current window width**.
+- If the window is narrow (or the next snip would start off-screen to the right), it wraps to a **new row below** so you can see it without horizontal scrolling.
+- The image may extend past the right edge; only the start of the snip is kept on-screen.
 
 ---
 

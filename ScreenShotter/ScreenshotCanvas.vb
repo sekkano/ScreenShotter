@@ -367,7 +367,17 @@ Public Class ScreenshotCanvas
                 frames.Add(New Rectangle(item.Location, item.Size))
             End If
         Next
-        Return ScreenshotLayoutHelper.PlaceNextScreenshot(frames, newSize, Point.Empty)
+
+        ' Document-space top-left of what is currently visible (accounts for AutoScroll)
+        Dim viewOrigin As New Point(
+            Math.Max(0, -AutoScrollPosition.X),
+            Math.Max(0, -AutoScrollPosition.Y))
+
+        Return ScreenshotLayoutHelper.PlaceNextScreenshot(
+            frames,
+            newSize,
+            viewportOrigin:=viewOrigin,
+            viewportWidth:=Math.Max(1, ClientSize.Width))
     End Function
 
     Private Sub OnBoxPositionChanged(sender As Object, e As PositionChangedEventArgs)
