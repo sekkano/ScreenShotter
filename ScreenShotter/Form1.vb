@@ -332,6 +332,12 @@
             Sub(sender As Object, e As EventArgs)
                 drawStrip.SwitchToPointer()
             End Sub
+        AddHandler canvas.AnnotationSelected,
+            Sub(sender As Object, e As AnnotationSelectedEventArgs)
+                If e?.Annotation IsNot Nothing Then
+                    drawStrip.SyncFromAnnotation(e.Annotation)
+                End If
+            End Sub
         ' Initial sync
         canvas.ApplyDrawingSettings(drawStrip.ActiveTool, drawStrip.Settings)
     End Sub

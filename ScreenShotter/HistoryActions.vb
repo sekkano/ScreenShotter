@@ -272,3 +272,14 @@ Public Class ScreenshotSnapshot
         Image = Nothing
     End Sub
 End Class
+
+''' <summary>Args for AnnotationSelected on the canvas.</summary>
+Public Class AnnotationSelectedEventArgs
+    Inherits EventArgs
+
+    Public Sub New(annotation As AnnotationBase)
+        Me.Annotation = annotation
+    End Sub
+
+    Public ReadOnly Property Annotation As AnnotationBase
+End Class

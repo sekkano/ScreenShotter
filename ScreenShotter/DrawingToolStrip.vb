@@ -185,6 +185,47 @@ Public Class DrawingToolStrip
         End Get
     End Property
 
+    ''' <summary>
+    ''' Stays in Pointer and loads the tool dropdown + color/size from a selected annotation.
+    ''' Does not raise AppearanceChanged (avoids rewriting the selection).
+    ''' </summary>
+    Public Sub SyncFromAnnotation(ann As AnnotationBase)
+        If ann Is Nothing Then Return
+
+        Dim tool As DrawingTool
+        If TypeOf ann Is RectAnnotation Then
+            tool = DrawingTool.Rectangle
+        ElseIf TypeOf ann Is ArrowAnnotation Then
+            tool = DrawingTool.Arrow
+        ElseIf TypeOf ann Is TextAnnotation Then
+            tool = DrawingTool.Text
+        Else
+            Return
+        End If
+
+        _suppressEvents = True
+        Try
+            _modeIsPointer = True
+            SyncModeButtons()
+            _settings.SelectTool(tool)
+            _settings.BaseColor = Color.FromArgb(255, ann.Color)
+            If tool = DrawingTool.Text Then
+                _settings.Thickness = AnnotationHelper.ClampFontSize(ann.NativeSize)
+            Else
+                _settings.Thickness = DrawingHelper.ClampThickness(ann.NativeSize)
+            End If
+
+            Dim idx = Array.IndexOf(ToolOrder, tool)
+            If idx >= 0 Then _cmbTool.SelectedIndex = idx
+            UpdateControlsForTool(tool)
+            SyncAppearanceControlsFromSettings()
+        Finally
+            _suppressEvents = False
+        End Try
+
+        RaiseSettingsChanged()
+    End Sub
+
     Private Sub OnToolChanged(sender As Object, e As EventArgs)
         If _suppressEvents Then Return
         Dim tool = ToolFromComboIndex(_cmbTool.SelectedIndex)

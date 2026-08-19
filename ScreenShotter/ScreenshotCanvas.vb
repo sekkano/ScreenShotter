@@ -112,10 +112,17 @@ Public Class ScreenshotCanvas
     Public Event TransformChanged As EventHandler(Of TransformChangedEventArgs)
     ''' <summary>Raised when the user right-clicks a screenshot to return to Pointer mode.</summary>
     Public Event PointerModeRequested As EventHandler
+    ''' <summary>Raised when an annotation is selected so the strip can match tool/color/size.</summary>
+    Public Event AnnotationSelected As EventHandler(Of AnnotationSelectedEventArgs)
 
     Public Sub RequestPointerMode()
         ActiveTool = DrawingTool.Pointer
         RaiseEvent PointerModeRequested(Me, EventArgs.Empty)
+    End Sub
+
+    Public Sub NotifyAnnotationSelected(annotation As AnnotationBase)
+        If annotation Is Nothing Then Return
+        RaiseEvent AnnotationSelected(Me, New AnnotationSelectedEventArgs(annotation))
     End Sub
 
     Public Function AddScreenshotImage(image As Image, Optional location As Point? = Nothing, Optional recordHistory As Boolean = True) As ScreenshotItem

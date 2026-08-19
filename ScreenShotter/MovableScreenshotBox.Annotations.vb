@@ -71,8 +71,7 @@ Partial Public Class MovableScreenshotBox
         End If
 
         _annotations.Add(draft)
-        _selectedAnnotation = draft
-        Invalidate()
+        SelectAnnotation(draft)
         Return draft
     End Function
 
@@ -89,9 +88,14 @@ Partial Public Class MovableScreenshotBox
 
         Dim ann = _canvas.DrawingSettings.CreateTextAnnotation(p, proposed.Trim())
         _annotations.Add(ann)
-        _selectedAnnotation = ann
         _canvas?.RecordAnnotationAdded(ItemId, ann)
+        SelectAnnotation(ann)
+    End Sub
+
+    Private Sub SelectAnnotation(ann As AnnotationBase)
+        _selectedAnnotation = ann
         Invalidate()
+        _canvas?.NotifyAnnotationSelected(ann)
     End Sub
 
     Private Function TryBeginAnnotationEdit(local As Point) As Boolean
@@ -144,7 +148,7 @@ Partial Public Class MovableScreenshotBox
 
             If kind = AnnotEditKind.None Then Continue For
 
-            _selectedAnnotation = ann
+            SelectAnnotation(ann)
             _annotEditOriginal = ann.Clone()
             _annotEditKind = kind
             _annotEditGrabNorm = p
@@ -152,7 +156,6 @@ Partial Public Class MovableScreenshotBox
             _mode = InteractMode.AnnotEdit
             Capture = True
             Cursor = CursorForAnnotationEdit(kind, handle)
-            Invalidate()
             Return True
         Next
 
