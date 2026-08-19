@@ -125,6 +125,8 @@ Public Class DrawingToolStrip
 
     Private Sub OnDrawUiActivated(sender As Object, e As EventArgs)
         If _suppressEvents Then Return
+        ' Stay in Pointer when restyling a selected annotation (don't kick into Draw)
+        If _modeIsPointer Then Return
         EnterDrawMode()
     End Sub
 
@@ -322,15 +324,16 @@ Public Class DrawingToolStrip
 
     ''' <summary>
     ''' Appearance edits while in Pointer stay in Pointer so a selected annotation can be restyled.
-    ''' Tool switches do not raise AppearanceChanged (so they won't restyle the selection).
+    ''' Always raises AppearanceChanged so Size/Color updates apply to the selection.
+    ''' Tool switches do not call this (so they won't restyle the selection).
     ''' </summary>
     Private Sub NotifyAppearanceChanged()
-        If _modeIsPointer Then
-            RaiseSettingsChanged()
-            RaiseAppearanceChanged()
-        Else
+        If Not _modeIsPointer Then
             EnterDrawMode()
+        Else
+            RaiseSettingsChanged()
         End If
+        RaiseAppearanceChanged()
     End Sub
 
     Private Sub UpdateColorSwatch()
