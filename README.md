@@ -148,7 +148,7 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 |--------|--------|
 | **Pointer** | Move / resize screenshots; select and edit annotations |
 | **Draw** | Enter draw mode with the tool selected in the dropdown |
-| **Tool dropdown** | **Highlighter**, **Pen**, **Rectangle**, **Arrow**, or **Text** |
+| **Tool dropdown** | **Highlighter**, **Pen**, **Blur**, **Rectangle**, **Arrow**, or **Text** |
 | **Color** | Open a color picker |
 | **Opacity** | Transparency of new ink strokes (20%–100%; shapes/text are opaque) |
 | **Size** | Stroke thickness, or font size when **Text** is selected |
@@ -158,6 +158,7 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 | Tool | Create | Edit (Pointer) |
 |------|--------|----------------|
 | **Highlighter / Pen** | Freehand drag | — |
+| **Blur** | Freehand drag (redacts / softens under the brush) | — |
 | **Rectangle** | Drag out a box | Move; drag border/corners to resize |
 | **Arrow** | Drag from start → tip | Move; drag endpoints |
 | **Text** | Click → enter text in a dialog | Drag to move; change Font size/color in the strip |

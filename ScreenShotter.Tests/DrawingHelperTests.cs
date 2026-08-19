@@ -129,6 +129,20 @@ public class DrawingHelperTests
         Assert.False(DrawingHelper.IsInkTool(DrawingTool.Pointer));
         Assert.True(DrawingHelper.IsInkTool(DrawingTool.Highlighter));
         Assert.True(DrawingHelper.IsInkTool(DrawingTool.Pen));
+        Assert.True(DrawingHelper.IsInkTool(DrawingTool.Blur));
+        Assert.False(DrawingHelper.IsInkTool(DrawingTool.Rectangle));
+    }
+
+    [Fact]
+    public void CreateBlurredImage_ReturnsSameSize()
+    {
+        using var src = new Bitmap(80, 40);
+        using var g = Graphics.FromImage(src);
+        g.Clear(Color.Red);
+        using var blurred = ImageBlurHelper.CreateBlurredImage(src, factor: 8);
+        Assert.NotNull(blurred);
+        Assert.Equal(80, blurred!.Width);
+        Assert.Equal(40, blurred.Height);
     }
 
     [Fact]

@@ -45,6 +45,7 @@ Partial Public Class MovableScreenshotBox
     Private ReadOnly _canvas As ScreenshotCanvas
     Private ReadOnly _strokes As New List(Of InkStroke)()
     Private _activeStroke As InkStroke
+    Private _blurredImage As Bitmap
     Private ReadOnly _annotations As New List(Of AnnotationBase)()
     Private _selectedAnnotation As AnnotationBase
     Private _annotationDraft As AnnotationBase
@@ -584,6 +585,11 @@ Partial Public Class MovableScreenshotBox
         Dim pts = BuildViewportPoints(stroke, destFrame, panX, panY, contentW, contentH)
         If pts.Length = 0 Then Return
 
+        If stroke.Tool = DrawingTool.Blur Then
+            DrawBlurStroke(g, pts, width, destFrame, panX, panY, contentW, contentH)
+            Return
+        End If
+
         Dim prevMode = g.CompositingMode
         Dim prevSmooth = g.SmoothingMode
         Dim prevPixel = g.PixelOffsetMode
@@ -618,6 +624,66 @@ Partial Public Class MovableScreenshotBox
             g.PixelOffsetMode = prevPixel
         End Try
     End Sub
+
+    ''' <summary>
+    ''' Freehand blur: clip to the brush path and paint a downscale/upscale blurred copy of the image.
+    ''' </summary>
+    Private Sub DrawBlurStroke(
+        g As Graphics,
+        pts As PointF(),
+        width As Single,
+        destFrame As Rectangle,
+        panX As Single,
+        panY As Single,
+        contentW As Single,
+        contentH As Single)
+
+        Dim blurred = GetOrCreateBlurredImage()
+        If blurred Is Nothing Then Return
+
+        Dim imageDest As New RectangleF(destFrame.X + panX, destFrame.Y + panY, contentW, contentH)
+        Dim prevMode = g.CompositingMode
+        Dim prevSmooth = g.SmoothingMode
+        Dim state = g.Save()
+        Try
+            g.CompositingMode = Drawing2D.CompositingMode.SourceOver
+            g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
+
+            Using clipPath As New Drawing2D.GraphicsPath()
+                If pts.Length = 1 Then
+                    Dim r = width / 2.0F
+                    clipPath.AddEllipse(pts(0).X - r, pts(0).Y - r, width, width)
+                Else
+                    clipPath.AddLines(pts)
+                    Using widenPen As New Pen(Color.Black, width)
+                        widenPen.StartCap = Drawing2D.LineCap.Round
+                        widenPen.EndCap = Drawing2D.LineCap.Round
+                        widenPen.LineJoin = Drawing2D.LineJoin.Round
+                        clipPath.Widen(widenPen)
+                    End Using
+                End If
+                g.SetClip(clipPath, Drawing2D.CombineMode.Intersect)
+            End Using
+
+            g.InterpolationMode = Drawing2D.InterpolationMode.HighQualityBilinear
+            g.DrawImage(blurred, Rectangle.Round(imageDest))
+        Finally
+            g.Restore(state)
+            g.CompositingMode = prevMode
+            g.SmoothingMode = prevSmooth
+        End Try
+    End Sub
+
+    Private Function GetOrCreateBlurredImage() As Bitmap
+        If _blurredImage IsNot Nothing Then Return _blurredImage
+        If _image Is Nothing Then Return Nothing
+        Try
+            _blurredImage = ImageBlurHelper.CreateBlurredImage(_image)
+        Catch
+            Return Nothing
+        End Try
+        Return _blurredImage
+    End Function
 
     Private Shared Function BuildViewportPoints(
         stroke As InkStroke,
@@ -1220,6 +1286,10 @@ Partial Public Class MovableScreenshotBox
 
     Protected Overrides Sub Dispose(disposing As Boolean)
         ' Image lifetime owned by canvas — do not dispose _image here
+        If disposing Then
+            _blurredImage?.Dispose()
+            _blurredImage = Nothing
+        End If
         MyBase.Dispose(disposing)
     End Sub
 End Class

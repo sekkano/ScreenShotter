@@ -14,6 +14,8 @@ Public Enum DrawingTool
     Arrow = 4
     ''' <summary>Click to place text (editable afterward).</summary>
     Text = 5
+    ''' <summary>Freehand blur brush (privacy / redact), similar to highlighter.</summary>
+    Blur = 6
 End Enum
 
 ''' <summary>
@@ -72,6 +74,7 @@ Public Class DrawingSettings
         ' Seed each draw tool with its defaults once; later edits are kept.
         EnsureSlot(DrawingTool.Highlighter)
         EnsureSlot(DrawingTool.Pen)
+        EnsureSlot(DrawingTool.Blur)
         EnsureSlot(DrawingTool.Rectangle)
         EnsureSlot(DrawingTool.Arrow)
         EnsureSlot(DrawingTool.Text)
@@ -213,7 +216,7 @@ Public Class DrawingSettings
 
     Private Shared Function NormalizeDrawTool(tool As DrawingTool) As DrawingTool
         Select Case tool
-            Case DrawingTool.Pen, DrawingTool.Highlighter,
+            Case DrawingTool.Pen, DrawingTool.Highlighter, DrawingTool.Blur,
                  DrawingTool.Rectangle, DrawingTool.Arrow, DrawingTool.Text
                 Return tool
             Case Else
@@ -287,7 +290,9 @@ Public Module DrawingHelper
     Public Const MaxThickness As Single = 96.0F
 
     Public Function IsInkTool(tool As DrawingTool) As Boolean
-        Return tool = DrawingTool.Highlighter OrElse tool = DrawingTool.Pen
+        Return tool = DrawingTool.Highlighter OrElse
+            tool = DrawingTool.Pen OrElse
+            tool = DrawingTool.Blur
     End Function
 
     Public Function IsShapeTool(tool As DrawingTool) As Boolean
@@ -315,6 +320,7 @@ Public Module DrawingHelper
 
     Public Const DefaultShapeThickness As Single = 4.0F
     Public Const DefaultTextSize As Single = 28.0F
+    Public Const DefaultBlurThickness As Single = 36.0F
 
     ''' <summary>
     ''' Distinct defaults per tool.
@@ -327,6 +333,13 @@ Public Module DrawingHelper
                     DefaultPenBaseColor,
                     DefaultPenOpacityPercent,
                     DefaultPenThickness)
+            Case DrawingTool.Blur
+                ' Color unused (blur samples the image); thickness = brush size
+                Return New DrawingToolPreset(
+                    DrawingTool.Blur,
+                    Color.Gray,
+                    100,
+                    DefaultBlurThickness)
             Case DrawingTool.Rectangle
                 Return New DrawingToolPreset(
                     DrawingTool.Rectangle,
@@ -373,6 +386,7 @@ Public Module DrawingHelper
         Select Case tool
             Case DrawingTool.Highlighter : Return "Highlighter"
             Case DrawingTool.Pen : Return "Pen"
+            Case DrawingTool.Blur : Return "Blur"
             Case DrawingTool.Rectangle : Return "Rectangle"
             Case DrawingTool.Arrow : Return "Arrow"
             Case DrawingTool.Text : Return "Text"

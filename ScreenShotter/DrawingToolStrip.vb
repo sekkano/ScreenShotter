@@ -8,6 +8,7 @@ Public Class DrawingToolStrip
     Private ReadOnly _btnPointer As ToolStripButton
     Private ReadOnly _btnDraw As ToolStripButton
     Private ReadOnly _cmbTool As ToolStripComboBox
+    Private ReadOnly _lblColor As ToolStripLabel
     Private ReadOnly _btnColor As ToolStripButton
     Private ReadOnly _cmbOpacity As ToolStripComboBox
     Private ReadOnly _cmbThickness As ToolStripComboBox
@@ -28,6 +29,7 @@ Public Class DrawingToolStrip
     Private Shared ReadOnly ToolOrder As DrawingTool() = {
         DrawingTool.Highlighter,
         DrawingTool.Pen,
+        DrawingTool.Blur,
         DrawingTool.Rectangle,
         DrawingTool.Arrow,
         DrawingTool.Text
@@ -64,6 +66,7 @@ Public Class DrawingToolStrip
         Next
         _cmbTool.SelectedIndex = 0
 
+        _lblColor = New ToolStripLabel("Color:") With {.ForeColor = Color.DimGray}
         _btnColor = New ToolStripButton("  ") With {
             .DisplayStyle = ToolStripItemDisplayStyle.Text,
             .ToolTipText = "Color",
@@ -98,7 +101,7 @@ Public Class DrawingToolStrip
         Items.Add(_btnDraw)
         Items.Add(New ToolStripSeparator())
         Items.Add(_cmbTool)
-        Items.Add(New ToolStripLabel("Color:") With {.ForeColor = Color.DimGray})
+        Items.Add(_lblColor)
         Items.Add(_btnColor)
         Items.Add(_lblOpacity)
         Items.Add(_cmbOpacity)
@@ -239,9 +242,13 @@ Public Class DrawingToolStrip
 
     Private Sub UpdateControlsForTool(tool As DrawingTool)
         Dim ink = DrawingHelper.IsInkTool(tool)
+        Dim blur = (tool = DrawingTool.Blur)
         Dim text = (tool = DrawingTool.Text)
-        _lblOpacity.Visible = ink
-        _cmbOpacity.Visible = ink
+        ' Blur uses brush size only (no color/opacity)
+        _lblColor.Visible = Not blur
+        _btnColor.Visible = Not blur
+        _lblOpacity.Visible = ink AndAlso Not blur
+        _cmbOpacity.Visible = ink AndAlso Not blur
         _lblSize.Text = If(text, "Font:", "Size:")
         RebuildSizeChoices(forText:=text)
     End Sub
