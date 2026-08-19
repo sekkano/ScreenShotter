@@ -2,12 +2,18 @@
 ''' Drawing tools available on the annotation toolbar.
 ''' </summary>
 Public Enum DrawingTool
-    ''' <summary>Move / resize / pan screenshots (no ink).</summary>
+    ''' <summary>Move / resize / pan screenshots; select annotations.</summary>
     Pointer = 0
     ''' <summary>Semi-transparent freehand highlight on a screenshot.</summary>
     Highlighter = 1
     ''' <summary>Freehand pen (uses opacity from settings; often more opaque).</summary>
     Pen = 2
+    ''' <summary>Drag out a border rectangle (editable afterward).</summary>
+    Rectangle = 3
+    ''' <summary>Drag an arrow from start to end (editable afterward).</summary>
+    Arrow = 4
+    ''' <summary>Click to place text (editable afterward).</summary>
+    Text = 5
 End Enum
 
 ''' <summary>
@@ -63,9 +69,12 @@ Public Class DrawingSettings
     Private ReadOnly _appearance As New Dictionary(Of DrawingTool, ToolAppearance)()
 
     Public Sub New()
-        ' Seed each ink tool with its defaults once; later edits are kept.
+        ' Seed each draw tool with its defaults once; later edits are kept.
         EnsureSlot(DrawingTool.Highlighter)
         EnsureSlot(DrawingTool.Pen)
+        EnsureSlot(DrawingTool.Rectangle)
+        EnsureSlot(DrawingTool.Arrow)
+        EnsureSlot(DrawingTool.Text)
     End Sub
 
     Public Property Tool As DrawingTool
@@ -78,10 +87,10 @@ Public Class DrawingSettings
     End Property
 
     ''' <summary>
-    ''' Switches the active ink tool without resetting its saved appearance.
+    ''' Switches the active draw tool without resetting its saved appearance.
     ''' </summary>
-    Public Sub SelectTool(inkTool As DrawingTool)
-        Dim t = NormalizeInkTool(inkTool)
+    Public Sub SelectTool(drawTool As DrawingTool)
+        Dim t = NormalizeDrawTool(drawTool)
         EnsureSlot(t)
         _tool = t
     End Sub
@@ -126,7 +135,8 @@ Public Class DrawingSettings
     End Property
 
     Public Function CreateStroke() As InkStroke
-        Dim tool = NormalizeInkTool(_tool)
+        Dim tool = NormalizeDrawTool(_tool)
+        If Not DrawingHelper.IsInkTool(tool) Then tool = DrawingTool.Highlighter
         Dim app = CurrentAppearance()
         Dim a = CInt(Math.Round(app.OpacityPercent / 100.0 * 255.0))
         a = Math.Max(0, Math.Min(255, a))
@@ -134,11 +144,43 @@ Public Class DrawingSettings
         Return New InkStroke(tool, inkColor, app.Thickness)
     End Function
 
+    ''' <summary>Creates a rectangle annotation from current appearance.</summary>
+    Public Function CreateRectAnnotation(bounds As RectangleF) As RectAnnotation
+        Dim app = AppearanceFor(DrawingTool.Rectangle)
+        Return New RectAnnotation() With {
+            .Color = Color.FromArgb(255, app.BaseColor),
+            .NativeSize = app.Thickness,
+            .Bounds = AnnotationHelper.NormalizeRect(bounds)
+        }
+    End Function
+
+    ''' <summary>Creates an arrow annotation from current appearance.</summary>
+    Public Function CreateArrowAnnotation(startPt As PointF, endPt As PointF) As ArrowAnnotation
+        Dim app = AppearanceFor(DrawingTool.Arrow)
+        Return New ArrowAnnotation() With {
+            .Color = Color.FromArgb(255, app.BaseColor),
+            .NativeSize = app.Thickness,
+            .Start = startPt,
+            .End = endPt
+        }
+    End Function
+
+    ''' <summary>Creates a text annotation from current appearance.</summary>
+    Public Function CreateTextAnnotation(location As PointF, text As String) As TextAnnotation
+        Dim app = AppearanceFor(DrawingTool.Text)
+        Return New TextAnnotation() With {
+            .Color = Color.FromArgb(255, app.BaseColor),
+            .NativeSize = AnnotationHelper.ClampFontSize(app.Thickness),
+            .Location = location,
+            .Text = If(text, "")
+        }
+    End Function
+
     ''' <summary>
     ''' Resets one tool (or the active tool) back to factory defaults.
     ''' </summary>
-    Public Sub ApplyToolPreset(inkTool As DrawingTool)
-        Dim t = NormalizeInkTool(inkTool)
+    Public Sub ApplyToolPreset(drawTool As DrawingTool)
+        Dim t = NormalizeDrawTool(drawTool)
         Dim preset = DrawingHelper.GetToolPreset(t)
         _appearance(t) = ToolAppearance.FromPreset(preset)
         _tool = t
@@ -147,8 +189,12 @@ Public Class DrawingSettings
     ''' <summary>
     ''' Appearance snapshot for a tool (for tests / UI sync).
     ''' </summary>
-    Public Function GetAppearance(inkTool As DrawingTool) As ToolAppearance
-        Dim t = NormalizeInkTool(inkTool)
+    Public Function GetAppearance(drawTool As DrawingTool) As ToolAppearance
+        Return AppearanceFor(drawTool)
+    End Function
+
+    Private Function AppearanceFor(drawTool As DrawingTool) As ToolAppearance
+        Dim t = NormalizeDrawTool(drawTool)
         EnsureSlot(t)
         Return _appearance(t)
     End Function
@@ -158,16 +204,21 @@ Public Class DrawingSettings
         Return _appearance(_tool)
     End Function
 
-    Private Sub EnsureSlot(inkTool As DrawingTool)
-        Dim t = NormalizeInkTool(inkTool)
+    Private Sub EnsureSlot(drawTool As DrawingTool)
+        Dim t = NormalizeDrawTool(drawTool)
         If Not _appearance.ContainsKey(t) Then
             _appearance(t) = ToolAppearance.FromPreset(DrawingHelper.GetToolPreset(t))
         End If
     End Sub
 
-    Private Shared Function NormalizeInkTool(tool As DrawingTool) As DrawingTool
-        If tool = DrawingTool.Pen Then Return DrawingTool.Pen
-        Return DrawingTool.Highlighter
+    Private Shared Function NormalizeDrawTool(tool As DrawingTool) As DrawingTool
+        Select Case tool
+            Case DrawingTool.Pen, DrawingTool.Highlighter,
+                 DrawingTool.Rectangle, DrawingTool.Arrow, DrawingTool.Text
+                Return tool
+            Case Else
+                Return DrawingTool.Highlighter
+        End Select
     End Function
 End Class
 
@@ -239,8 +290,34 @@ Public Module DrawingHelper
         Return tool = DrawingTool.Highlighter OrElse tool = DrawingTool.Pen
     End Function
 
+    Public Function IsShapeTool(tool As DrawingTool) As Boolean
+        Return tool = DrawingTool.Rectangle OrElse
+            tool = DrawingTool.Arrow OrElse
+            tool = DrawingTool.Text
+    End Function
+
+    ''' <summary>Any tool that draws onto a screenshot (not Pointer).</summary>
+    Public Function IsAnnotationTool(tool As DrawingTool) As Boolean
+        Return IsInkTool(tool) OrElse IsShapeTool(tool)
+    End Function
+
+    Public ReadOnly Property DefaultShapeBaseColor As Color
+        Get
+            Return Color.FromArgb(255, 220, 40, 40)
+        End Get
+    End Property
+
+    Public ReadOnly Property DefaultTextBaseColor As Color
+        Get
+            Return Color.FromArgb(255, 20, 20, 20)
+        End Get
+    End Property
+
+    Public Const DefaultShapeThickness As Single = 4.0F
+    Public Const DefaultTextSize As Single = 28.0F
+
     ''' <summary>
-    ''' Distinct defaults: Highlighter is a wide soft translucent mark; Pen is thin solid ink.
+    ''' Distinct defaults per tool.
     ''' </summary>
     Public Function GetToolPreset(tool As DrawingTool) As DrawingToolPreset
         Select Case tool
@@ -250,6 +327,24 @@ Public Module DrawingHelper
                     DefaultPenBaseColor,
                     DefaultPenOpacityPercent,
                     DefaultPenThickness)
+            Case DrawingTool.Rectangle
+                Return New DrawingToolPreset(
+                    DrawingTool.Rectangle,
+                    DefaultShapeBaseColor,
+                    100,
+                    DefaultShapeThickness)
+            Case DrawingTool.Arrow
+                Return New DrawingToolPreset(
+                    DrawingTool.Arrow,
+                    DefaultShapeBaseColor,
+                    100,
+                    DefaultShapeThickness)
+            Case DrawingTool.Text
+                Return New DrawingToolPreset(
+                    DrawingTool.Text,
+                    DefaultTextBaseColor,
+                    100,
+                    DefaultTextSize)
             Case Else
                 Return New DrawingToolPreset(
                     DrawingTool.Highlighter,
@@ -278,6 +373,9 @@ Public Module DrawingHelper
         Select Case tool
             Case DrawingTool.Highlighter : Return "Highlighter"
             Case DrawingTool.Pen : Return "Pen"
+            Case DrawingTool.Rectangle : Return "Rectangle"
+            Case DrawingTool.Arrow : Return "Arrow"
+            Case DrawingTool.Text : Return "Text"
             Case DrawingTool.Pointer : Return "Pointer"
             Case Else : Return tool.ToString()
         End Select

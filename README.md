@@ -146,27 +146,30 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 
 | Control | Action |
 |--------|--------|
-| **Pointer** | Move / resize screenshots |
+| **Pointer** | Move / resize screenshots; select and edit annotations |
 | **Draw** | Enter draw mode with the tool selected in the dropdown |
-| **Tool dropdown** | **Highlighter** or **Pen** |
+| **Tool dropdown** | **Highlighter**, **Pen**, **Rectangle**, **Arrow**, or **Text** |
 | **Color** | Open a color picker |
-| **Opacity** | Transparency of new strokes (20%–100%) |
-| **Size** | Stroke thickness |
+| **Opacity** | Transparency of new ink strokes (20%–100%; shapes/text are opaque) |
+| **Size** | Stroke thickness, or font size when **Text** is selected |
 
-### Highlighter vs Pen
+### Tools
 
-| | Highlighter | Pen |
-|--|-------------|-----|
-| Default look | Wide, translucent yellow | Thin, solid dark |
-| Typical use | Mark areas | Write / outline |
+| Tool | Create | Edit (Pointer) |
+|------|--------|----------------|
+| **Highlighter / Pen** | Freehand drag | — |
+| **Rectangle** | Drag out a box | Move; drag border/corners to resize |
+| **Arrow** | Drag from start → tip | Move; drag endpoints |
+| **Text** | Click → enter text in a dialog | Drag to move; change Font size/color in the strip |
 
-Each tool **remembers** its own color, opacity, and size when you switch back and forth.
+Each tool **remembers** its own color and size when you switch back and forth. With an annotation selected in **Pointer**, changing color/size updates that annotation.
 
 ### Drawing tips
 
-- Click **Draw**, pick a tool, then drag on a screenshot.
+- Click **Draw**, pick a tool, then drag (or click for Text) on a screenshot.
+- Switch to **Pointer** and click an annotation to select it; **Delete** removes the selected annotation (otherwise Delete removes the screenshot).
 - **Ctrl + drag** still **moves** the screenshot while a draw tool is active.
-- **Shift + draw** locks the stroke to a **straight horizontal** line.
+- **Shift + draw** locks a pen/highlighter stroke to a **straight horizontal** line.
 - You can hold **Shift** mid-stroke to snap the rest of the line horizontal.
 - Edge/corner **resize** still works while Draw is selected.
 - Drawings are included when you **File → Save**.

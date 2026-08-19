@@ -156,6 +156,107 @@ Public Class DeleteScreenshotHistoryAction
 End Class
 
 ''' <summary>
+''' Undo adding a shape / arrow / text annotation.
+''' </summary>
+Public Class AnnotationAddHistoryAction
+    Implements IUndoAction
+
+    Private ReadOnly _canvas As ScreenshotCanvas
+    Private ReadOnly _itemId As Guid
+    Private ReadOnly _annotation As AnnotationBase
+
+    Public Sub New(canvas As ScreenshotCanvas, itemId As Guid, annotation As AnnotationBase)
+        _canvas = canvas
+        _itemId = itemId
+        _annotation = annotation
+    End Sub
+
+    Public ReadOnly Property Description As String Implements IUndoAction.Description
+        Get
+            Return "Add annotation"
+        End Get
+    End Property
+
+    Public Sub Undo() Implements IUndoAction.Undo
+        Dim box = _canvas.FindBox(_itemId)
+        box?.RemoveAnnotation(_annotation)
+    End Sub
+
+    Public Sub Redo() Implements IUndoAction.Redo
+        Dim box = _canvas.FindBox(_itemId)
+        box?.AddAnnotation(_annotation)
+    End Sub
+End Class
+
+''' <summary>
+''' Undo deleting a shape / arrow / text annotation.
+''' </summary>
+Public Class AnnotationRemoveHistoryAction
+    Implements IUndoAction
+
+    Private ReadOnly _canvas As ScreenshotCanvas
+    Private ReadOnly _itemId As Guid
+    Private ReadOnly _annotation As AnnotationBase
+
+    Public Sub New(canvas As ScreenshotCanvas, itemId As Guid, annotation As AnnotationBase)
+        _canvas = canvas
+        _itemId = itemId
+        _annotation = annotation
+    End Sub
+
+    Public ReadOnly Property Description As String Implements IUndoAction.Description
+        Get
+            Return "Delete annotation"
+        End Get
+    End Property
+
+    Public Sub Undo() Implements IUndoAction.Undo
+        Dim box = _canvas.FindBox(_itemId)
+        box?.AddAnnotation(_annotation)
+    End Sub
+
+    Public Sub Redo() Implements IUndoAction.Redo
+        Dim box = _canvas.FindBox(_itemId)
+        box?.RemoveAnnotation(_annotation)
+    End Sub
+End Class
+
+''' <summary>
+''' Undo an edit to an existing annotation (move / resize / restyle).
+''' </summary>
+Public Class AnnotationEditHistoryAction
+    Implements IUndoAction
+
+    Private ReadOnly _canvas As ScreenshotCanvas
+    Private ReadOnly _itemId As Guid
+    Private ReadOnly _before As AnnotationBase
+    Private ReadOnly _after As AnnotationBase
+
+    Public Sub New(canvas As ScreenshotCanvas, itemId As Guid, before As AnnotationBase, after As AnnotationBase)
+        _canvas = canvas
+        _itemId = itemId
+        _before = before
+        _after = after
+    End Sub
+
+    Public ReadOnly Property Description As String Implements IUndoAction.Description
+        Get
+            Return "Edit annotation"
+        End Get
+    End Property
+
+    Public Sub Undo() Implements IUndoAction.Undo
+        Dim box = _canvas.FindBox(_itemId)
+        box?.ApplyAnnotationState(_before)
+    End Sub
+
+    Public Sub Redo() Implements IUndoAction.Redo
+        Dim box = _canvas.FindBox(_itemId)
+        box?.ApplyAnnotationState(_after)
+    End Sub
+End Class
+
+''' <summary>
 ''' Full snapshot used to restore a deleted / re-added screenshot.
 ''' Owns a clone of the image until the action is discarded with the history stack.
 ''' </summary>
@@ -164,6 +265,7 @@ Public Class ScreenshotSnapshot
     Public Property Image As Image
     Public Property Transform As BoxTransformState
     Public Property Strokes As List(Of InkStroke)
+    Public Property Annotations As List(Of AnnotationBase)
 
     Public Sub DisposeImage()
         Image?.Dispose()

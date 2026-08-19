@@ -163,6 +163,21 @@ Public Class ScreenshotCanvas
         _history.Push(New StrokeHistoryAction(Me, itemId, stroke))
     End Sub
 
+    Public Sub RecordAnnotationAdded(itemId As Guid, annotation As AnnotationBase)
+        If annotation Is Nothing Then Return
+        _history.Push(New AnnotationAddHistoryAction(Me, itemId, annotation))
+    End Sub
+
+    Public Sub RecordAnnotationRemoved(itemId As Guid, annotation As AnnotationBase)
+        If annotation Is Nothing Then Return
+        _history.Push(New AnnotationRemoveHistoryAction(Me, itemId, annotation))
+    End Sub
+
+    Public Sub RecordAnnotationChanged(itemId As Guid, before As AnnotationBase, after As AnnotationBase)
+        If before Is Nothing OrElse after Is Nothing Then Return
+        _history.Push(New AnnotationEditHistoryAction(Me, itemId, before, after))
+    End Sub
+
     Public Sub RecordTransform(itemId As Guid, before As BoxTransformState, after As BoxTransformState)
         If before.EqualsState(after) Then Return
         _history.Push(New TransformHistoryAction(Me, itemId, before, after))
@@ -197,7 +212,8 @@ Public Class ScreenshotCanvas
             .ItemId = itemId,
             .Image = DirectCast(img.Clone(), Image),
             .Transform = box.CaptureTransform(),
-            .Strokes = box.CloneStrokes()
+            .Strokes = box.CloneStrokes(),
+            .Annotations = box.CloneAnnotations()
         }
     End Function
 
@@ -223,6 +239,7 @@ Public Class ScreenshotCanvas
         }
         box.ApplyTransform(snapshot.Transform)
         box.ReplaceStrokes(snapshot.Strokes)
+        box.ReplaceAnnotations(snapshot.Annotations)
 
         AddHandler box.PositionChanged, AddressOf OnBoxPositionChanged
         AddHandler box.TransformChanged, AddressOf OnBoxTransformChanged

@@ -5,7 +5,7 @@
 ''' - Zoom scales image inside the fixed frame (pan follows cursor)
 ''' - Single custom-painted control (no child PictureBox) to avoid move ghosting
 ''' </summary>
-Public Class MovableScreenshotBox
+Partial Public Class MovableScreenshotBox
     Inherits Control
 
     Private Enum InteractMode
@@ -14,6 +14,17 @@ Public Class MovableScreenshotBox
         Resize
         Pan
         Draw
+        Annotate
+        AnnotEdit
+    End Enum
+
+    Private Enum AnnotEditKind
+        None
+        Move
+        ResizeRect
+        MoveArrowStart
+        MoveArrowEnd
+        ScaleText
     End Enum
 
     Private Enum ResizeEdge
@@ -34,6 +45,16 @@ Public Class MovableScreenshotBox
     Private ReadOnly _canvas As ScreenshotCanvas
     Private ReadOnly _strokes As New List(Of InkStroke)()
     Private _activeStroke As InkStroke
+    Private ReadOnly _annotations As New List(Of AnnotationBase)()
+    Private _selectedAnnotation As AnnotationBase
+    Private _annotationDraft As AnnotationBase
+    Private _annotateStartNorm As PointF
+    Private _annotateTool As DrawingTool
+    Private _annotEditKind As AnnotEditKind = AnnotEditKind.None
+    Private _annotEditOriginal As AnnotationBase
+    Private _annotEditGrabNorm As PointF
+    Private _pendingTextClick As Boolean
+    Private _pendingTextLocal As Point
     Private _zoom As Double = ZoomHelper.DefaultZoom
     Private _pan As Point = Point.Empty
     Private _mode As InteractMode = InteractMode.None
@@ -121,9 +142,30 @@ Public Class MovableScreenshotBox
     ''' </summary>
     Public ReadOnly Property IsInteracting As Boolean
         Get
-            Return _mode <> InteractMode.None OrElse _pendingMove
+            Return _mode <> InteractMode.None OrElse _pendingMove OrElse _pendingTextClick
         End Get
     End Property
+
+    ''' <summary>
+    ''' Applies current drawing strip color/size to the selected annotation (if any).
+    ''' </summary>
+    Public Function ApplyStyleToSelectedAnnotation(settings As DrawingSettings) As Boolean
+        If settings Is Nothing OrElse _selectedAnnotation Is Nothing Then Return False
+        Dim before = _selectedAnnotation.Clone()
+        _selectedAnnotation.Color = Color.FromArgb(255, settings.BaseColor)
+        If TypeOf _selectedAnnotation Is TextAnnotation Then
+            _selectedAnnotation.NativeSize = AnnotationHelper.ClampFontSize(settings.Thickness)
+        Else
+            _selectedAnnotation.NativeSize = DrawingHelper.ClampThickness(settings.Thickness)
+        End If
+        Dim after = _selectedAnnotation.Clone()
+        If Not AnnotationStatesEqual(before, after) Then
+            _canvas?.RecordAnnotationChanged(ItemId, before, after)
+            Invalidate()
+            Return True
+        End If
+        Return False
+    End Function
 
     Public Event PositionChanged As EventHandler(Of PositionChangedEventArgs)
     Public Event TransformChanged As EventHandler(Of TransformChangedEventArgs)
@@ -141,6 +183,10 @@ Public Class MovableScreenshotBox
         _mode = InteractMode.None
         _resizeEdge = ResizeEdge.None
         _activeStroke = Nothing
+        _annotationDraft = Nothing
+        _pendingTextClick = False
+        _annotEditKind = AnnotEditKind.None
+        _annotEditOriginal = Nothing
         _drawLockHorizontal = False
         _hasTransformBaseline = False
         Cursor = CursorForIdle(PointToClient(Cursor.Position))
@@ -156,7 +202,9 @@ Public Class MovableScreenshotBox
     ''' that never became a drag (no Capture was taken).
     ''' </summary>
     Public Sub NotifyGlobalMouseUp()
-        If _pendingMove AndAlso _mode = InteractMode.None Then
+        If _pendingTextClick AndAlso _mode = InteractMode.None Then
+            EndInteract()
+        ElseIf _pendingMove AndAlso _mode = InteractMode.None Then
             _pendingMove = False
             Cursor = CursorForIdle(PointToClient(Cursor.Position))
         ElseIf _mode <> InteractMode.None Then
@@ -238,6 +286,50 @@ Public Class MovableScreenshotBox
         End If
         Invalidate()
     End Sub
+
+    Public Sub AddAnnotation(annotation As AnnotationBase)
+        If annotation Is Nothing Then Return
+        _annotations.Add(annotation)
+        Invalidate()
+    End Sub
+
+    Public Function RemoveAnnotation(annotation As AnnotationBase) As Boolean
+        If annotation Is Nothing Then Return False
+        Dim removed = _annotations.Remove(annotation)
+        If Object.ReferenceEquals(_selectedAnnotation, annotation) Then
+            _selectedAnnotation = Nothing
+        End If
+        If removed Then Invalidate()
+        Return removed
+    End Function
+
+    Public Function CloneAnnotations() As List(Of AnnotationBase)
+        Dim list As New List(Of AnnotationBase)(_annotations.Count)
+        For Each a In _annotations
+            list.Add(a.Clone())
+        Next
+        Return list
+    End Function
+
+    ''' <summary>Snapshot clones for undo; shares instances currently on the box.</summary>
+    Public Function GetAnnotations() As List(Of AnnotationBase)
+        Return New List(Of AnnotationBase)(_annotations)
+    End Function
+
+    Public Sub ReplaceAnnotations(annotations As IEnumerable(Of AnnotationBase))
+        _annotations.Clear()
+        _selectedAnnotation = Nothing
+        If annotations IsNot Nothing Then
+            _annotations.AddRange(annotations)
+        End If
+        Invalidate()
+    End Sub
+
+    Public ReadOnly Property SelectedAnnotation As AnnotationBase
+        Get
+            Return _selectedAnnotation
+        End Get
+    End Property
 
     Private Sub RememberTransformBaseline()
         _transformAtInteractionStart = CaptureTransform()
@@ -377,6 +469,7 @@ Public Class MovableScreenshotBox
                 contentH)
             g.DrawImage(_image, dest)
             DrawAllStrokes(g, destFrame, scaleX, scaleY)
+            DrawAllAnnotations(g, destFrame, scaleX, scaleY, selectedId:=Guid.Empty)
         Finally
             g.Restore(state)
         End Try
@@ -436,11 +529,17 @@ Public Class MovableScreenshotBox
         g.CompositingMode = Drawing2D.CompositingMode.SourceOver
         g.DrawImage(_image, dest)
 
-        ' Ink (highlighter etc.) above the image, below selection chrome
+        ' Ink + shapes above the image, below selection chrome
         g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
-        DrawAllStrokes(g, New Rectangle(0, 0, Width, Height), 1.0, 1.0)
+        Dim paintFrame As New Rectangle(0, 0, Width, Height)
+        DrawAllStrokes(g, paintFrame, 1.0, 1.0)
         If _activeStroke IsNot Nothing Then
-            DrawStroke(g, _activeStroke, New Rectangle(0, 0, Width, Height), 1.0, 1.0)
+            DrawStroke(g, _activeStroke, paintFrame, 1.0, 1.0)
+        End If
+        Dim selId = If(_selectedAnnotation IsNot Nothing, _selectedAnnotation.Id, Guid.Empty)
+        DrawAllAnnotations(g, paintFrame, 1.0, 1.0, selId)
+        If _annotationDraft IsNot Nothing Then
+            DrawOneAnnotation(g, _annotationDraft, paintFrame, 1.0, 1.0, selected:=False)
         End If
         g.SmoothingMode = Drawing2D.SmoothingMode.None
 
@@ -574,13 +673,22 @@ Public Class MovableScreenshotBox
                 Capture = True
             ElseIf ctrlHeld Then
                 ' Ctrl+drag always moves (works while a draw tool is active)
+                ClearAnnotationSelection()
                 BeginPendingMove(e.Location)
             ElseIf DrawingHelper.IsInkTool(_canvas.ActiveTool) Then
+                ClearAnnotationSelection()
                 BeginDraw(e.Location, lockHorizontal:=shiftHeld)
+            ElseIf DrawingHelper.IsShapeTool(_canvas.ActiveTool) Then
+                ClearAnnotationSelection()
+                BeginAnnotate(e.Location, _canvas.ActiveTool)
             ElseIf shiftHeld Then
+                ClearAnnotationSelection()
                 BeginPan(e.Location)
+            ElseIf TryBeginAnnotationEdit(e.Location) Then
+                ' Pointer hit an annotation — edit it
             Else
-                ' Click selects; drag past threshold moves (avoids accidental teleport)
+                ' Click selects screenshot; drag past threshold moves
+                ClearAnnotationSelection()
                 BeginPendingMove(e.Location)
             End If
         ElseIf e.Button = MouseButtons.Middle Then
@@ -724,6 +832,16 @@ Public Class MovableScreenshotBox
             If _activeStroke IsNot Nothing AndAlso _activeStroke.Points.Count <> before Then
                 Invalidate()
             End If
+            Return
+        End If
+
+        If _mode = InteractMode.Annotate Then
+            UpdateAnnotateDraft(e.Location)
+            Return
+        End If
+
+        If _mode = InteractMode.AnnotEdit Then
+            UpdateAnnotationEdit(e.Location)
             Return
         End If
 
@@ -908,8 +1026,16 @@ Public Class MovableScreenshotBox
     Protected Overrides Sub OnKeyDown(e As KeyEventArgs)
         MyBase.OnKeyDown(e)
         If e.KeyCode = Keys.Delete OrElse e.KeyCode = Keys.Back Then
-            Dim canvas = TryCast(Parent, ScreenshotCanvas)
-            If canvas IsNot Nothing AndAlso canvas.RemoveSelectedScreenshot() Then
+            If _selectedAnnotation IsNot Nothing Then
+                Dim victim = _selectedAnnotation
+                If RemoveAnnotation(victim) Then
+                    _canvas?.RecordAnnotationRemoved(ItemId, victim)
+                End If
+                e.Handled = True
+                e.SuppressKeyPress = True
+                Return
+            End If
+            If _canvas IsNot Nothing AndAlso _canvas.RemoveSelectedScreenshot() Then
                 e.Handled = True
                 e.SuppressKeyPress = True
             End If
@@ -941,16 +1067,21 @@ Public Class MovableScreenshotBox
 
     Private Sub EndInteract()
         If _endingInteract Then Return
-        If _mode = InteractMode.None AndAlso Not _pendingMove Then Return
+        If _mode = InteractMode.None AndAlso Not _pendingMove AndAlso Not _pendingTextClick Then Return
         _endingInteract = True
         Try
             Dim wasMove = _mode = InteractMode.Move
             Dim wasResize = _mode = InteractMode.Resize
             Dim wasPan = _mode = InteractMode.Pan
             Dim wasDraw = _mode = InteractMode.Draw
+            Dim wasAnnotate = _mode = InteractMode.Annotate
+            Dim wasAnnotEdit = _mode = InteractMode.AnnotEdit
+            Dim pendingText = _pendingTextClick
+            Dim textLocal = _pendingTextLocal
             ' Pure click (select only) — must not change Location or fire move events
             Dim wasPendingOnly = _pendingMove AndAlso _mode = InteractMode.None
             _pendingMove = False
+            _pendingTextClick = False
             _mode = InteractMode.None
             _resizeEdge = ResizeEdge.None
             If Capture Then Capture = False
@@ -965,6 +1096,23 @@ Public Class MovableScreenshotBox
                 _activeStroke = Nothing
                 _drawLockHorizontal = False
                 Invalidate()
+            End If
+
+            Dim completedAnnotation As AnnotationBase = Nothing
+            If wasAnnotate Then
+                completedAnnotation = CommitAnnotateDraft(PointToClient(Cursor.Position))
+            End If
+            If wasAnnotEdit Then
+                CommitAnnotationEdit()
+            End If
+            ' Text tool: place only on a click (no meaningful drag)
+            If pendingText AndAlso Not wasAnnotate AndAlso Not wasAnnotEdit Then
+                Dim cur = PointToClient(Cursor.Position)
+                Dim dx = cur.X - textLocal.X
+                Dim dy = cur.Y - textLocal.Y
+                If dx * dx + dy * dy <= MoveDragThresholdPx * MoveDragThresholdPx Then
+                    PlaceTextAt(textLocal)
+                End If
             End If
 
             ' Keep control in non-negative document space so AutoScroll can reach it
@@ -986,6 +1134,9 @@ Public Class MovableScreenshotBox
             If completedStroke IsNot Nothing Then
                 _canvas?.RecordStroke(ItemId, completedStroke)
             End If
+            If completedAnnotation IsNot Nothing Then
+                _canvas?.RecordAnnotationAdded(ItemId, completedAnnotation)
+            End If
             If _hasTransformBaseline AndAlso
                 ((wasMove AndAlso Not wasPendingOnly) OrElse wasResize OrElse wasPan) Then
                 Dim after = CaptureTransform()
@@ -997,7 +1148,8 @@ Public Class MovableScreenshotBox
 
             Cursor = CursorForIdle(PointToClient(Cursor.Position))
             ' Skip scroll-bounds churn on simple select clicks
-            If Not wasPendingOnly OrElse wasDraw OrElse wasResize OrElse wasMove OrElse wasPan Then
+            If Not wasPendingOnly OrElse wasDraw OrElse wasResize OrElse wasMove OrElse wasPan OrElse
+               wasAnnotate OrElse wasAnnotEdit OrElse pendingText Then
                 RaiseEvent InteractionEnded(Me, EventArgs.Empty)
             End If
         Finally
@@ -1014,7 +1166,7 @@ Public Class MovableScreenshotBox
         If (Control.ModifierKeys And Keys.Control) = Keys.Control Then
             Return Cursors.SizeAll
         End If
-        If _canvas IsNot Nothing AndAlso DrawingHelper.IsInkTool(_canvas.ActiveTool) Then
+        If _canvas IsNot Nothing AndAlso DrawingHelper.IsAnnotationTool(_canvas.ActiveTool) Then
             Return Cursors.Cross
         End If
         Return Cursors.SizeAll

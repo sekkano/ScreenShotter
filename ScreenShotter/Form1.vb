@@ -316,6 +316,10 @@
                 Dim strip = TryCast(sender, DrawingToolStrip)
                 If strip IsNot Nothing Then
                     canvas.ApplyDrawingSettings(strip.ActiveTool, strip.Settings)
+                    ' Restyle selected annotation when color/size changes in Pointer mode
+                    If strip.ActiveTool = DrawingTool.Pointer Then
+                        canvas.SelectedBox?.ApplyStyleToSelectedAnnotation(strip.Settings)
+                    End If
                 End If
                 UpdateStatus()
             End Sub

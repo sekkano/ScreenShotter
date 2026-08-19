@@ -1,6 +1,6 @@
-''' <summary>
+﻿''' <summary>
 ''' Annotation toolbar under the tab headers: Pointer, drawing-tool dropdown,
-''' color, transparency, and thickness.
+''' color, transparency, and thickness / text size.
 ''' </summary>
 Public Class DrawingToolStrip
     Inherits ClickThroughToolStrip
@@ -11,6 +11,8 @@ Public Class DrawingToolStrip
     Private ReadOnly _btnColor As ToolStripButton
     Private ReadOnly _cmbOpacity As ToolStripComboBox
     Private ReadOnly _cmbThickness As ToolStripComboBox
+    Private ReadOnly _lblOpacity As ToolStripLabel
+    Private ReadOnly _lblSize As ToolStripLabel
     Private ReadOnly _settings As New DrawingSettings()
     Private _modeIsPointer As Boolean = True
     Private _suppressEvents As Boolean
@@ -19,6 +21,15 @@ Public Class DrawingToolStrip
 
     Private Shared ReadOnly OpacityChoices As Integer() = {20, 30, 40, 50, 60, 70, 80, 90, 100}
     Private Shared ReadOnly ThicknessChoices As Single() = {2, 4, 8, 12, 16, 20, 28, 36, 48, 64}
+    Private Shared ReadOnly FontSizeChoices As Single() = {12, 16, 20, 24, 28, 36, 48, 64, 72, 96}
+
+    Private Shared ReadOnly ToolOrder As DrawingTool() = {
+        DrawingTool.Highlighter,
+        DrawingTool.Pen,
+        DrawingTool.Rectangle,
+        DrawingTool.Arrow,
+        DrawingTool.Text
+    }
 
     Public Sub New()
         MyBase.New()
@@ -31,13 +42,13 @@ Public Class DrawingToolStrip
             .CheckOnClick = False,
             .Checked = True,
             .DisplayStyle = ToolStripItemDisplayStyle.Text,
-            .ToolTipText = "Select and move screenshots (or use Ctrl+drag while drawing)"
+            .ToolTipText = "Select screenshots and annotations (Ctrl+drag always moves a screenshot)"
         }
         _btnDraw = New ToolStripButton("Draw") With {
             .CheckOnClick = False,
             .Checked = False,
             .DisplayStyle = ToolStripItemDisplayStyle.Text,
-            .ToolTipText = "Draw with the selected tool (Highlighter / Pen)"
+            .ToolTipText = "Draw with the selected tool"
         }
 
         _cmbTool = New ToolStripComboBox("cmbTool") With {
@@ -46,20 +57,20 @@ Public Class DrawingToolStrip
             .Width = 110,
             .ToolTipText = "Drawing tool"
         }
-        _cmbTool.Items.AddRange(New Object() {
-            DrawingHelper.ToolDisplayName(DrawingTool.Highlighter),
-            DrawingHelper.ToolDisplayName(DrawingTool.Pen)
-        })
+        For Each t In ToolOrder
+            _cmbTool.Items.Add(DrawingHelper.ToolDisplayName(t))
+        Next
         _cmbTool.SelectedIndex = 0
 
         _btnColor = New ToolStripButton("  ") With {
             .DisplayStyle = ToolStripItemDisplayStyle.Text,
-            .ToolTipText = "Ink color",
+            .ToolTipText = "Color",
             .AutoSize = False,
             .Width = 36
         }
         UpdateColorSwatch()
 
+        _lblOpacity = New ToolStripLabel("Opacity:") With {.ForeColor = Color.DimGray}
         _cmbOpacity = New ToolStripComboBox("cmbOpacity") With {
             .DropDownStyle = ComboBoxStyle.DropDownList,
             .AutoSize = False,
@@ -71,15 +82,14 @@ Public Class DrawingToolStrip
         Next
         SelectOpacity(DrawingHelper.DefaultOpacityPercent)
 
+        _lblSize = New ToolStripLabel("Size:") With {.ForeColor = Color.DimGray}
         _cmbThickness = New ToolStripComboBox("cmbThickness") With {
             .DropDownStyle = ComboBoxStyle.DropDownList,
             .AutoSize = False,
             .Width = 72,
-            .ToolTipText = "Stroke thickness"
+            .ToolTipText = "Stroke thickness or text size"
         }
-        For Each t In ThicknessChoices
-            _cmbThickness.Items.Add($"{CInt(t)} px")
-        Next
+        RebuildSizeChoices(forText:=False)
         SelectThickness(DrawingHelper.DefaultThickness)
 
         Items.Add(_btnPointer)
@@ -88,9 +98,9 @@ Public Class DrawingToolStrip
         Items.Add(_cmbTool)
         Items.Add(New ToolStripLabel("Color:") With {.ForeColor = Color.DimGray})
         Items.Add(_btnColor)
-        Items.Add(New ToolStripLabel("Opacity:") With {.ForeColor = Color.DimGray})
+        Items.Add(_lblOpacity)
         Items.Add(_cmbOpacity)
-        Items.Add(New ToolStripLabel("Size:") With {.ForeColor = Color.DimGray})
+        Items.Add(_lblSize)
         Items.Add(_cmbThickness)
 
         AddHandler _btnPointer.Click, AddressOf OnPointerClick
@@ -99,11 +109,12 @@ Public Class DrawingToolStrip
         AddHandler _btnColor.Click, AddressOf OnColorClick
         AddHandler _cmbOpacity.SelectedIndexChanged, AddressOf OnOpacityChanged
         AddHandler _cmbThickness.SelectedIndexChanged, AddressOf OnThicknessChanged
-        ' Opening draw-related controls also enters draw mode
         AddHandler _cmbTool.DropDown, AddressOf OnDrawUiActivated
         AddHandler _cmbTool.Click, AddressOf OnDrawUiActivated
         AddHandler _cmbOpacity.DropDown, AddressOf OnDrawUiActivated
         AddHandler _cmbThickness.DropDown, AddressOf OnDrawUiActivated
+
+        UpdateControlsForTool(_settings.Tool)
     End Sub
 
     Private Sub OnDrawClick(sender As Object, e As EventArgs)
@@ -129,7 +140,6 @@ Public Class DrawingToolStrip
         _btnDraw.Checked = Not _modeIsPointer
     End Sub
 
-    ''' <summary>Current tool for the canvas: Pointer or a draw tool.</summary>
     <System.ComponentModel.Browsable(False)>
     <System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)>
     Public ReadOnly Property ActiveTool As DrawingTool
@@ -160,10 +170,43 @@ Public Class DrawingToolStrip
     Private Sub OnToolChanged(sender As Object, e As EventArgs)
         If _suppressEvents Then Return
         Dim tool = ToolFromComboIndex(_cmbTool.SelectedIndex)
-        ' Switch tool only — restore that tool's last color/opacity/size
         _settings.SelectTool(tool)
+        UpdateControlsForTool(tool)
         SyncAppearanceControlsFromSettings()
         EnterDrawMode()
+    End Sub
+
+    Private Sub UpdateControlsForTool(tool As DrawingTool)
+        Dim ink = DrawingHelper.IsInkTool(tool)
+        Dim text = (tool = DrawingTool.Text)
+        _lblOpacity.Visible = ink
+        _cmbOpacity.Visible = ink
+        _lblSize.Text = If(text, "Font:", "Size:")
+        RebuildSizeChoices(forText:=text)
+    End Sub
+
+    Private Sub RebuildSizeChoices(forText As Boolean)
+        Dim prev = _suppressEvents
+        _suppressEvents = True
+        Try
+            Dim current = If(_cmbThickness.SelectedIndex >= 0 AndAlso _cmbThickness.SelectedIndex < _cmbThickness.Items.Count,
+                _cmbThickness.SelectedIndex, 0)
+            _cmbThickness.Items.Clear()
+            If forText Then
+                For Each t In FontSizeChoices
+                    _cmbThickness.Items.Add($"{CInt(t)} pt")
+                Next
+            Else
+                For Each t In ThicknessChoices
+                    _cmbThickness.Items.Add($"{CInt(t)} px")
+                Next
+            End If
+            If _cmbThickness.Items.Count > 0 Then
+                _cmbThickness.SelectedIndex = Math.Min(current, _cmbThickness.Items.Count - 1)
+            End If
+        Finally
+            _suppressEvents = prev
+        End Try
     End Sub
 
     Private Sub SyncAppearanceControlsFromSettings()
@@ -171,7 +214,9 @@ Public Class DrawingToolStrip
         Try
             UpdateColorSwatch()
             SelectOpacity(_settings.OpacityPercent)
-            SelectThickness(_settings.Thickness)
+            Dim forText = (_settings.Tool = DrawingTool.Text)
+            RebuildSizeChoices(forText:=forText)
+            SelectThickness(_settings.Thickness, forText:=forText)
         Finally
             _suppressEvents = False
         End Try
@@ -202,16 +247,16 @@ Public Class DrawingToolStrip
 
     Private Sub OnThicknessChanged(sender As Object, e As EventArgs)
         If _suppressEvents Then Return
+        Dim forText = (_settings.Tool = DrawingTool.Text)
+        Dim choices = If(forText, FontSizeChoices, ThicknessChoices)
         Dim idx = _cmbThickness.SelectedIndex
-        If idx >= 0 AndAlso idx < ThicknessChoices.Length Then
-            _settings.Thickness = ThicknessChoices(idx)
+        If idx >= 0 AndAlso idx < choices.Length Then
+            _settings.Thickness = choices(idx)
             EnterDrawMode()
         End If
     End Sub
 
     Private Sub UpdateColorSwatch()
-        Dim c = _settings.StrokeColor
-        ' Solid swatch of base color; opacity shown separately
         _btnColor.BackColor = _settings.BaseColor
         _btnColor.ForeColor = _settings.BaseColor
         _btnColor.Text = "■■"
@@ -237,11 +282,12 @@ Public Class DrawingToolStrip
         End Try
     End Sub
 
-    Private Sub SelectThickness(thickness As Single)
+    Private Sub SelectThickness(thickness As Single, Optional forText As Boolean = False)
+        Dim choices = If(forText, FontSizeChoices, ThicknessChoices)
         Dim best = 0
         Dim bestDiff = Single.MaxValue
-        For i = 0 To ThicknessChoices.Length - 1
-            Dim d = Math.Abs(ThicknessChoices(i) - thickness)
+        For i = 0 To choices.Length - 1
+            Dim d = Math.Abs(choices(i) - thickness)
             If d < bestDiff Then
                 bestDiff = d
                 best = i
@@ -250,17 +296,19 @@ Public Class DrawingToolStrip
         Dim prev = _suppressEvents
         _suppressEvents = True
         Try
-            _cmbThickness.SelectedIndex = best
-            _settings.Thickness = ThicknessChoices(best)
+            If best < _cmbThickness.Items.Count Then
+                _cmbThickness.SelectedIndex = best
+            End If
+            _settings.Thickness = choices(best)
         Finally
             _suppressEvents = prev
         End Try
     End Sub
 
     Private Shared Function ToolFromComboIndex(index As Integer) As DrawingTool
-        Select Case index
-            Case 1 : Return DrawingTool.Pen
-            Case Else : Return DrawingTool.Highlighter
-        End Select
+        If index >= 0 AndAlso index < ToolOrder.Length Then
+            Return ToolOrder(index)
+        End If
+        Return DrawingTool.Highlighter
     End Function
 End Class
