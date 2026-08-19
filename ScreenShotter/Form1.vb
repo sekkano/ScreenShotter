@@ -316,7 +316,14 @@
                 Dim strip = TryCast(sender, DrawingToolStrip)
                 If strip IsNot Nothing Then
                     canvas.ApplyDrawingSettings(strip.ActiveTool, strip.Settings)
-                    ' Always try restyle — works when Pointer has a selection
+                End If
+                UpdateStatus()
+            End Sub
+        ' Color/size only — switching tools must not restyle the selected annotation
+        AddHandler drawStrip.AppearanceChanged,
+            Sub(sender As Object, e As EventArgs)
+                Dim strip = TryCast(sender, DrawingToolStrip)
+                If strip IsNot Nothing Then
                     canvas.SelectedBox?.ApplyStyleToSelectedAnnotation(strip.Settings)
                 End If
                 UpdateStatus()

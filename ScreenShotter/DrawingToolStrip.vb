@@ -18,6 +18,8 @@ Public Class DrawingToolStrip
     Private _suppressEvents As Boolean
 
     Public Event SettingsChanged As EventHandler
+    ''' <summary>Fired when color / opacity / size changes (not when only switching tools).</summary>
+    Public Event AppearanceChanged As EventHandler
 
     Private Shared ReadOnly OpacityChoices As Integer() = {20, 30, 40, 50, 60, 70, 80, 90, 100}
     Private Shared ReadOnly ThicknessChoices As Single() = {2, 4, 8, 12, 16, 20, 28, 36, 48, 64}
@@ -161,6 +163,10 @@ Public Class DrawingToolStrip
         RaiseEvent SettingsChanged(Me, EventArgs.Empty)
     End Sub
 
+    Private Sub RaiseAppearanceChanged()
+        RaiseEvent AppearanceChanged(Me, EventArgs.Empty)
+    End Sub
+
     Private Sub OnPointerClick(sender As Object, e As EventArgs)
         SwitchToPointer()
     End Sub
@@ -275,10 +281,12 @@ Public Class DrawingToolStrip
 
     ''' <summary>
     ''' Appearance edits while in Pointer stay in Pointer so a selected annotation can be restyled.
+    ''' Tool switches do not raise AppearanceChanged (so they won't restyle the selection).
     ''' </summary>
     Private Sub NotifyAppearanceChanged()
         If _modeIsPointer Then
             RaiseSettingsChanged()
+            RaiseAppearanceChanged()
         Else
             EnterDrawMode()
         End If
