@@ -188,7 +188,8 @@ Public Class DrawingToolStrip
     End Property
 
     ''' <summary>
-    ''' Stays in Pointer and loads the tool dropdown + color/size from a selected annotation.
+    ''' Loads the tool dropdown + color/size from a selected annotation.
+    ''' Does not change Pointer vs Draw — only an explicit Pointer click or right-click does that.
     ''' Does not raise AppearanceChanged (avoids rewriting the selection).
     ''' </summary>
     Public Sub SyncFromAnnotation(ann As AnnotationBase)
@@ -207,8 +208,6 @@ Public Class DrawingToolStrip
 
         _suppressEvents = True
         Try
-            _modeIsPointer = True
-            SyncModeButtons()
             _settings.SelectTool(tool)
             _settings.BaseColor = Color.FromArgb(255, ann.Color)
             If tool = DrawingTool.Text Then
