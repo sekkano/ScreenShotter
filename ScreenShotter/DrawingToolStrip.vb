@@ -234,12 +234,8 @@ Public Class DrawingToolStrip
         _settings.SelectTool(tool)
         UpdateControlsForTool(tool)
         SyncAppearanceControlsFromSettings()
-        ' Stay in Pointer when already there so a selected annotation can be restyled
-        If _modeIsPointer Then
-            RaiseSettingsChanged()
-        Else
-            EnterDrawMode()
-        End If
+        ' Picking a tool always enters Draw (ready to create with that tool)
+        EnterDrawMode()
     End Sub
 
     Private Sub UpdateControlsForTool(tool As DrawingTool)
