@@ -47,6 +47,7 @@
     ''' Delete / Backspace removes the selected screenshot on the active tab.
     ''' Ctrl+Z / Ctrl+Y undo and redo on the active tab.
     ''' Ctrl+S saves the current tab composite.
+    ''' Ctrl+C copies the current tab composite to the clipboard.
     ''' </summary>
     Protected Overrides Function ProcessCmdKey(ByRef msg As Message, keyData As Keys) As Boolean
         If keyData = Keys.Delete OrElse keyData = Keys.Back Then
@@ -76,6 +77,10 @@
             SaveActiveTab()
             Return True
         End If
+        If keyData = (Keys.Control Or Keys.C) Then
+            CopyActiveTab()
+            Return True
+        End If
         Return MyBase.ProcessCmdKey(msg, keyData)
     End Function
 
@@ -97,12 +102,20 @@
         SaveActiveTab()
     End Sub
 
+    Private Sub menuCopy_Click(sender As Object, e As EventArgs) Handles menuCopy.Click
+        CopyActiveTab()
+    End Sub
+
     Private Sub menuExit_Click(sender As Object, e As EventArgs) Handles menuExit.Click
         Close()
     End Sub
 
     Private Sub btnCapture_Click(sender As Object, e As EventArgs) Handles btnCapture.Click
         StartCapture()
+    End Sub
+
+    Private Sub btnCopy_Click(sender As Object, e As EventArgs) Handles btnCopy.Click
+        CopyActiveTab()
     End Sub
 
     Private Sub btnZoomIn_Click(sender As Object, e As EventArgs) Handles btnZoomIn.Click
@@ -521,6 +534,51 @@
         End Using
     End Sub
 
+    ''' <summary>
+    ''' Copies the current tab composite to the clipboard for paste into other apps.
+    ''' </summary>
+    Private Sub CopyActiveTab()
+        Dim canvas = GetActiveCanvas()
+        If canvas Is Nothing Then
+            statusLabel.Text = "Nothing to copy"
+            Return
+        End If
+        If canvas.ScreenshotCount = 0 Then
+            MessageBox.Show(
+                Me,
+                "This tab has no screenshots to copy.",
+                "Copy",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information)
+            Return
+        End If
+
+        Try
+            Using composite = canvas.RenderTabComposite()
+                If composite Is Nothing Then
+                    statusLabel.Text = "Copy failed"
+                    Return
+                End If
+                Using flat = TabExportHelper.CreateClipboardBitmap(composite)
+                    If flat Is Nothing Then
+                        statusLabel.Text = "Copy failed"
+                        Return
+                    End If
+                    Clipboard.SetImage(flat)
+                End Using
+            End Using
+            statusLabel.Text = $"Copied tab ({canvas.ScreenshotCount} screenshot(s)) to clipboard — paste with Ctrl+V"
+        Catch ex As Exception
+            MessageBox.Show(
+                Me,
+                $"Failed to copy:{Environment.NewLine}{ex.Message}",
+                "Copy",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error)
+            statusLabel.Text = "Copy failed"
+        End Try
+    End Sub
+
     Private Sub OnCanvasSelectionChanged(sender As Object, e As EventArgs)
         UpdateStatus()
     End Sub
@@ -544,7 +602,7 @@
             End If
             statusLabel.Text =
                 $"{tabName}: {count} · zoom {zoomTxt} · {tool}{ink} — " &
-                "Ctrl+drag moves · Shift+wheel zooms · Ctrl+wheel pans · File → Save / Del"
+                "Ctrl+drag moves · Shift+wheel zooms · Ctrl+wheel pans · Copy / Save / Del"
             btnZoomReset.Text = zoomTxt
         Else
             Dim tool = If(canvas IsNot Nothing, DrawingHelper.ToolDisplayName(canvas.ActiveTool), "Pointer")

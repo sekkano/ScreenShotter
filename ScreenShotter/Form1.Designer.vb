@@ -25,10 +25,12 @@ Partial Class frmScreenShotter
         menuStrip = New MenuStrip()
         menuFile = New ToolStripMenuItem()
         menuSave = New ToolStripMenuItem()
+        menuCopy = New ToolStripMenuItem()
         menuFileSeparator = New ToolStripSeparator()
         menuExit = New ToolStripMenuItem()
         toolStrip = New ClickThroughToolStrip()
         btnCapture = New ToolStripButton()
+        btnCopy = New ToolStripButton()
         toolStripSeparator1 = New ToolStripSeparator()
         btnZoomOut = New ToolStripButton()
         btnZoomReset = New ToolStripButton()
@@ -52,7 +54,7 @@ Partial Class frmScreenShotter
         '
         'menuFile
         '
-        menuFile.DropDownItems.AddRange(New ToolStripItem() {menuSave, menuFileSeparator, menuExit})
+        menuFile.DropDownItems.AddRange(New ToolStripItem() {menuSave, menuCopy, menuFileSeparator, menuExit})
         menuFile.Name = "menuFile"
         menuFile.Size = New Size(37, 20)
         menuFile.Text = "&File"
@@ -64,6 +66,14 @@ Partial Class frmScreenShotter
         menuSave.Size = New Size(180, 22)
         menuSave.Text = "&Save"
         menuSave.ToolTipText = "Save everything on the current tab as an image"
+        '
+        'menuCopy
+        '
+        menuCopy.Name = "menuCopy"
+        menuCopy.ShortcutKeys = Keys.Control Or Keys.C
+        menuCopy.Size = New Size(180, 22)
+        menuCopy.Text = "&Copy"
+        menuCopy.ToolTipText = "Copy the current tab image to the clipboard"
         '
         'menuFileSeparator
         '
@@ -80,7 +90,7 @@ Partial Class frmScreenShotter
         '
         toolStrip.GripStyle = ToolStripGripStyle.Hidden
         toolStrip.Items.AddRange(New ToolStripItem() {
-            btnCapture, toolStripSeparator1,
+            btnCapture, btnCopy, toolStripSeparator1,
             btnZoomOut, btnZoomReset, btnZoomIn})
         toolStrip.Name = "toolStrip"
         toolStrip.Padding = New Padding(6, 2, 6, 2)
@@ -97,6 +107,14 @@ Partial Class frmScreenShotter
         btnCapture.Size = New Size(100, 23)
         btnCapture.Text = "New Screenshot"
         btnCapture.ToolTipText = "Capture a rectangular region (minimizes this window)"
+        '
+        'btnCopy
+        '
+        btnCopy.DisplayStyle = ToolStripItemDisplayStyle.Text
+        btnCopy.Name = "btnCopy"
+        btnCopy.Size = New Size(44, 23)
+        btnCopy.Text = "Copy"
+        btnCopy.ToolTipText = "Copy the current tab as an image (Ctrl+C)"
         '
         'toolStripSeparator1
         '
@@ -181,10 +199,12 @@ Partial Class frmScreenShotter
     Friend WithEvents menuStrip As MenuStrip
     Friend WithEvents menuFile As ToolStripMenuItem
     Friend WithEvents menuSave As ToolStripMenuItem
+    Friend WithEvents menuCopy As ToolStripMenuItem
     Friend WithEvents menuFileSeparator As ToolStripSeparator
     Friend WithEvents menuExit As ToolStripMenuItem
     Friend WithEvents toolStrip As ClickThroughToolStrip
     Friend WithEvents btnCapture As ToolStripButton
+    Friend WithEvents btnCopy As ToolStripButton
     Friend WithEvents toolStripSeparator1 As ToolStripSeparator
     Friend WithEvents btnZoomOut As ToolStripButton
     Friend WithEvents btnZoomReset As ToolStripButton

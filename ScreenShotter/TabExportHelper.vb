@@ -67,6 +67,22 @@ Public Module TabExportHelper
     End Function
 
     ''' <summary>
+    ''' Flattens a (possibly transparent) composite onto a white 24-bpp bitmap for clipboard paste.
+    ''' Caller owns and must dispose the returned bitmap.
+    ''' </summary>
+    Public Function CreateClipboardBitmap(source As Image) As Bitmap
+        If source Is Nothing Then Return Nothing
+        If source.Width <= 0 OrElse source.Height <= 0 Then Return Nothing
+
+        Dim flat As New Bitmap(source.Width, source.Height, Imaging.PixelFormat.Format24bppRgb)
+        Using g = Graphics.FromImage(flat)
+            g.Clear(Color.White)
+            g.DrawImageUnscaled(source, 0, 0)
+        End Using
+        Return flat
+    End Function
+
+    ''' <summary>
     ''' WinForms z-order: Controls(0) is the front (top-most). Bitmap compositing must
     ''' paint back-to-front so the top-most layer is drawn last (visible on top).
     ''' Returns indices: Count-1, Count-2, …, 0.

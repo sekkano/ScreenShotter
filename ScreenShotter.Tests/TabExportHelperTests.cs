@@ -65,4 +65,24 @@ public class TabExportHelperTests
         Assert.Empty(TabExportHelper.BottomToTopControlIndices(0));
         Assert.Equal(new[] { 0 }, TabExportHelper.BottomToTopControlIndices(1));
     }
+
+    [Fact]
+    public void CreateClipboardBitmap_FlattensOntoWhite24bpp()
+    {
+        using var source = new Bitmap(40, 30, PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(source);
+        g.Clear(Color.FromArgb(128, 255, 0, 0));
+
+        using var flat = TabExportHelper.CreateClipboardBitmap(source);
+        Assert.NotNull(flat);
+        Assert.Equal(40, flat!.Width);
+        Assert.Equal(30, flat.Height);
+        Assert.Equal(PixelFormat.Format24bppRgb, flat.PixelFormat);
+    }
+
+    [Fact]
+    public void CreateClipboardBitmap_Null_ReturnsNull()
+    {
+        Assert.Null(TabExportHelper.CreateClipboardBitmap(null!));
+    }
 }

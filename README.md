@@ -23,6 +23,7 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 | Command | Action |
 |---------|--------|
 | **Save** (Ctrl+S) | Export everything on the **current tab** as one image (PNG / JPEG / BMP) |
+| **Copy** (Ctrl+C) | Copy the current tab composite to the clipboard (paste with Ctrl+V) |
 | **Exit** | Close the application |
 
 **Layout (top → bottom)**
@@ -38,6 +39,7 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 | Control | Action |
 |--------|--------|
 | **New Screenshot** | Minimize the app, show a full-screen dimmed overlay, drag to capture a region |
+| **Copy** | Copy the current tab composite to the clipboard (Ctrl+C) |
 | **−** / **100%** / **+** | Zoom out, reset to 100%, or zoom in the **selected** screenshot |
 
 **Tabs** (light pill chrome)
@@ -53,6 +55,7 @@ A Windows screenshot app (similar to Snip & Sketch) with multi-monitor capture, 
 | Shortcut | Action |
 |----------|--------|
 | **Ctrl+S** | Save current tab |
+| **Ctrl+C** | Copy current tab to the clipboard |
 | **Ctrl+Z** | Undo (draw, move, resize, zoom, pan, add, delete) |
 | **Ctrl+Y** or **Ctrl+Shift+Z** | Redo |
 | **Delete** or **Backspace** | Delete the selected screenshot |

@@ -53,6 +53,7 @@ public class StructuralTypeTests
         Assert.NotNull(typeof(TabSession).GetMethod("RemoveScreenshot", new[] { typeof(Guid) }));
         Assert.NotNull(typeof(TabExportHelper).GetMethod("ComputeUnionBounds"));
         Assert.NotNull(typeof(TabExportHelper).GetMethod("FormatFromPath", new[] { typeof(string) }));
+        Assert.NotNull(typeof(TabExportHelper).GetMethod("CreateClipboardBitmap", new[] { typeof(Image) }));
         Assert.NotNull(typeof(MovableScreenshotBox).GetMethod("DrawContentAsDisplayed", new[] { typeof(Graphics), typeof(Rectangle) }));
         Assert.True(typeof(MovableScreenshotBox).IsSubclassOf(typeof(Control)));
         Assert.NotNull(typeof(MovableScreenshotBox).GetEvent("PositionChanged"));
