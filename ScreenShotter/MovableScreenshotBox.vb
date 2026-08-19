@@ -53,6 +53,7 @@ Partial Public Class MovableScreenshotBox
     Private _annotEditKind As AnnotEditKind = AnnotEditKind.None
     Private _annotEditOriginal As AnnotationBase
     Private _annotEditGrabNorm As PointF
+    Private _annotRectHandle As String = ""
     Private _pendingTextClick As Boolean
     Private _pendingTextLocal As Point
     Private _zoom As Double = ZoomHelper.DefaultZoom
@@ -696,6 +697,10 @@ Partial Public Class MovableScreenshotBox
             SelectMe()
             BringToFront()
             BeginPan(e.Location)
+        ElseIf e.Button = MouseButtons.Right Then
+            CancelInteraction()
+            ClearAnnotationSelection()
+            _canvas?.RequestPointerMode()
         End If
     End Sub
 
@@ -1161,6 +1166,8 @@ Partial Public Class MovableScreenshotBox
         If local.HasValue Then
             Dim edge = HitTestEdge(local.Value)
             If edge <> ResizeEdge.None Then Return CursorForEdge(edge)
+            Dim annCursor = CursorForAnnotationHover(local.Value)
+            If annCursor IsNot Nothing Then Return annCursor
         End If
         ' Ctrl held → move cursor (same as drag-to-move)
         If (Control.ModifierKeys And Keys.Control) = Keys.Control Then

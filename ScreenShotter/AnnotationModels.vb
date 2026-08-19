@@ -56,17 +56,10 @@ Public Class RectAnnotation
     End Function
 
     Public Overrides Function HitTest(norm As PointF, hitSlop As Single) As Boolean
+        ' Full body + border — interior drag moves; corners/edges resize in the editor
         Dim r = GetBounds()
         r.Inflate(hitSlop, hitSlop)
-        If Not r.Contains(norm) Then Return False
-        ' Prefer border hit: inside inflated outer but outside shrunk inner (or small rect → whole area)
-        Dim inner = GetBounds()
-        Dim shrink = Math.Max(hitSlop * 0.5F, 0.004F)
-        If inner.Width > shrink * 3 AndAlso inner.Height > shrink * 3 Then
-            inner.Inflate(-shrink, -shrink)
-            If inner.Contains(norm) Then Return False
-        End If
-        Return True
+        Return r.Contains(norm)
     End Function
 
     Public Overrides Sub Translate(dx As Single, dy As Single)
@@ -97,6 +90,7 @@ Public Class RectAnnotation
         End Using
         If selected Then
             AnnotationHelper.DrawSelectionRect(g, px)
+            AnnotationHelper.DrawCornerHandles(g, px)
         End If
     End Sub
 End Class
@@ -153,14 +147,21 @@ Public Class ArrowAnnotation
         Dim b = AnnotationHelper.NormToDest([End], destFrame, panX, panY, contentW, contentH)
         Dim w = Math.Max(1.0F, NativeSize * strokeScale)
         Dim head = AnnotationHelper.ArrowHeadPoints(a, b, w)
+        ' Shaft stops at the head base so the tip stays sharp (not rounded by the pen cap)
+        Dim shaftEnd = AnnotationHelper.ArrowShaftEnd(a, b, w)
 
         Using pen As New Pen(Color, w)
             pen.StartCap = LineCap.Round
-            pen.EndCap = LineCap.Round
-            g.DrawLine(pen, a, b)
+            pen.EndCap = LineCap.Flat
+            pen.LineJoin = LineJoin.Miter
+            g.DrawLine(pen, a, shaftEnd)
         End Using
         Using brush As New SolidBrush(Color)
             g.FillPolygon(brush, head)
+        End Using
+        Using pen As New Pen(Color, 1.0F)
+            pen.LineJoin = LineJoin.Miter
+            g.DrawPolygon(pen, head)
         End Using
         If selected Then
             AnnotationHelper.DrawEndpointHandles(g, a, b)
@@ -310,8 +311,9 @@ Public Module AnnotationHelper
         End If
         Dim ux = dx / len
         Dim uy = dy / len
-        Dim headLen = Math.Max(strokeWidth * 3.2F, 10.0F)
-        Dim headWidth = Math.Max(strokeWidth * 2.2F, 7.0F)
+        ' Longer, narrower head reads as a sharp tip
+        Dim headLen = Math.Max(strokeWidth * 4.5F, 14.0F)
+        Dim headWidth = Math.Max(strokeWidth * 1.6F, 5.5F)
         Dim baseX = endPt.X - ux * headLen
         Dim baseY = endPt.Y - uy * headLen
         Dim px = -uy
@@ -323,10 +325,40 @@ Public Module AnnotationHelper
         }
     End Function
 
+    ''' <summary>Where the shaft should end so it meets the arrowhead base (keeps the tip sharp).</summary>
+    Public Function ArrowShaftEnd(startPt As PointF, endPt As PointF, strokeWidth As Single) As PointF
+        Dim dx = endPt.X - startPt.X
+        Dim dy = endPt.Y - startPt.Y
+        Dim len = CSng(Math.Sqrt(dx * dx + dy * dy))
+        If len < 1.0F Then Return endPt
+        Dim headLen = Math.Max(strokeWidth * 4.5F, 14.0F)
+        Dim t = Math.Max(0.0F, (len - headLen) / len)
+        Return New PointF(startPt.X + dx * t, startPt.Y + dy * t)
+    End Function
+
     Public Sub DrawSelectionRect(g As Graphics, bounds As RectangleF)
         Using pen As New Pen(Color.FromArgb(180, 30, 120, 220), 1.0F)
             pen.DashStyle = DashStyle.Dash
             g.DrawRectangle(pen, bounds.X, bounds.Y, bounds.Width, bounds.Height)
+        End Using
+    End Sub
+
+    Public Sub DrawCornerHandles(g As Graphics, bounds As RectangleF)
+        Const s As Single = 7.0F
+        Dim corners = {
+            New PointF(bounds.Left, bounds.Top),
+            New PointF(bounds.Right, bounds.Top),
+            New PointF(bounds.Left, bounds.Bottom),
+            New PointF(bounds.Right, bounds.Bottom)
+        }
+        Using brush As New SolidBrush(Color.White)
+            Using pen As New Pen(Color.FromArgb(220, 30, 120, 220), 1.0F)
+                For Each c In corners
+                    Dim r As New RectangleF(c.X - s / 2, c.Y - s / 2, s, s)
+                    g.FillRectangle(brush, r)
+                    g.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height)
+                Next
+            End Using
         End Using
     End Sub
 
@@ -340,5 +372,72 @@ Public Module AnnotationHelper
 
     Public Function RectFromCorners(a As PointF, b As PointF) As RectangleF
         Return NormalizeRect(RectangleF.FromLTRB(a.X, a.Y, b.X, b.Y))
+    End Function
+
+    ''' <summary>
+    ''' Which resize handle (corner or edge) is under the point, or empty for miss.
+    ''' "MOVE" = interior (drag whole rectangle).
+    ''' </summary>
+    Public Function HitTestRectHandle(bounds As RectangleF, p As PointF, cornerSlop As Single, edgeSlop As Single) As String
+        If Distance(p, New PointF(bounds.Left, bounds.Top)) <= cornerSlop Then Return "NW"
+        If Distance(p, New PointF(bounds.Right, bounds.Top)) <= cornerSlop Then Return "NE"
+        If Distance(p, New PointF(bounds.Left, bounds.Bottom)) <= cornerSlop Then Return "SW"
+        If Distance(p, New PointF(bounds.Right, bounds.Bottom)) <= cornerSlop Then Return "SE"
+
+        Dim outer = bounds
+        outer.Inflate(edgeSlop, edgeSlop)
+        If Not outer.Contains(p) Then Return ""
+
+        Dim inner = bounds
+        inner.Inflate(-edgeSlop, -edgeSlop)
+        If inner.Width > 0.01F AndAlso inner.Height > 0.01F AndAlso inner.Contains(p) Then
+            Return "MOVE"
+        End If
+
+        If Math.Abs(p.Y - bounds.Top) <= edgeSlop AndAlso p.X >= bounds.Left AndAlso p.X <= bounds.Right Then Return "N"
+        If Math.Abs(p.Y - bounds.Bottom) <= edgeSlop AndAlso p.X >= bounds.Left AndAlso p.X <= bounds.Right Then Return "S"
+        If Math.Abs(p.X - bounds.Left) <= edgeSlop AndAlso p.Y >= bounds.Top AndAlso p.Y <= bounds.Bottom Then Return "W"
+        If Math.Abs(p.X - bounds.Right) <= edgeSlop AndAlso p.Y >= bounds.Top AndAlso p.Y <= bounds.Bottom Then Return "E"
+        If bounds.Contains(p) Then Return "MOVE"
+        Return ""
+    End Function
+
+    Public Function CursorForRectHandle(handle As String) As Cursor
+        Select Case handle
+            Case "NW", "SE" : Return Cursors.SizeNWSE
+            Case "NE", "SW" : Return Cursors.SizeNESW
+            Case "N", "S" : Return Cursors.SizeNS
+            Case "E", "W" : Return Cursors.SizeWE
+            Case "MOVE" : Return Cursors.SizeAll
+            Case Else : Return Cursors.Default
+        End Select
+    End Function
+
+    Public Function OppositeRectAnchor(bounds As RectangleF, handle As String) As PointF
+        Select Case handle
+            Case "NW" : Return New PointF(bounds.Right, bounds.Bottom)
+            Case "NE" : Return New PointF(bounds.Left, bounds.Bottom)
+            Case "SW" : Return New PointF(bounds.Right, bounds.Top)
+            Case "SE" : Return New PointF(bounds.Left, bounds.Top)
+            Case "N" : Return New PointF((bounds.Left + bounds.Right) / 2.0F, bounds.Bottom)
+            Case "S" : Return New PointF((bounds.Left + bounds.Right) / 2.0F, bounds.Top)
+            Case "W" : Return New PointF(bounds.Right, (bounds.Top + bounds.Bottom) / 2.0F)
+            Case "E" : Return New PointF(bounds.Left, (bounds.Top + bounds.Bottom) / 2.0F)
+            Case Else : Return New PointF(bounds.Left, bounds.Top)
+        End Select
+    End Function
+
+    Public Function ResizeRectFromHandle(orig As RectangleF, handle As String, p As PointF) As RectangleF
+        Select Case handle
+            Case "NW" : Return RectFromCorners(New PointF(orig.Right, orig.Bottom), p)
+            Case "NE" : Return RectFromCorners(New PointF(orig.Left, orig.Bottom), p)
+            Case "SW" : Return RectFromCorners(New PointF(orig.Right, orig.Top), p)
+            Case "SE" : Return RectFromCorners(New PointF(orig.Left, orig.Top), p)
+            Case "N" : Return NormalizeRect(RectangleF.FromLTRB(orig.Left, p.Y, orig.Right, orig.Bottom))
+            Case "S" : Return NormalizeRect(RectangleF.FromLTRB(orig.Left, orig.Top, orig.Right, p.Y))
+            Case "W" : Return NormalizeRect(RectangleF.FromLTRB(p.X, orig.Top, orig.Right, orig.Bottom))
+            Case "E" : Return NormalizeRect(RectangleF.FromLTRB(orig.Left, orig.Top, p.X, orig.Bottom))
+            Case Else : Return orig
+        End Select
     End Function
 End Module

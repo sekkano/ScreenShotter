@@ -168,6 +168,8 @@ Each tool **remembers** its own color and size when you switch back and forth. W
 
 - Click **Draw**, pick a tool, then drag (or click for Text) on a screenshot.
 - Switch to **Pointer** and click an annotation to select it; **Delete** removes the selected annotation (otherwise Delete removes the screenshot).
+- **Rectangle:** drag the **inside** to move (four-way cursor); drag **corners/edges** to resize (diagonal/axis cursors). Change Color/Size on the strip to restyle the selection.
+- **Right-click** a screenshot (or empty canvas) to jump back to the **Pointer** tool.
 - **Ctrl + drag** still **moves** the screenshot while a draw tool is active.
 - **Shift + draw** locks a pen/highlighter stroke to a **straight horizontal** line.
 - You can hold **Shift** mid-stroke to snap the rest of the line horizontal.

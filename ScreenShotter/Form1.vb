@@ -316,12 +316,14 @@
                 Dim strip = TryCast(sender, DrawingToolStrip)
                 If strip IsNot Nothing Then
                     canvas.ApplyDrawingSettings(strip.ActiveTool, strip.Settings)
-                    ' Restyle selected annotation when color/size changes in Pointer mode
-                    If strip.ActiveTool = DrawingTool.Pointer Then
-                        canvas.SelectedBox?.ApplyStyleToSelectedAnnotation(strip.Settings)
-                    End If
+                    ' Always try restyle — works when Pointer has a selection
+                    canvas.SelectedBox?.ApplyStyleToSelectedAnnotation(strip.Settings)
                 End If
                 UpdateStatus()
+            End Sub
+        AddHandler canvas.PointerModeRequested,
+            Sub(sender As Object, e As EventArgs)
+                drawStrip.SwitchToPointer()
             End Sub
         ' Initial sync
         canvas.ApplyDrawingSettings(drawStrip.ActiveTool, drawStrip.Settings)

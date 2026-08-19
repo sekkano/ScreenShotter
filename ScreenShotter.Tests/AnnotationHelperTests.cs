@@ -52,7 +52,7 @@ public class AnnotationHelperTests
     }
 
     [Fact]
-    public void RectAnnotation_HitTest_PrefersBorder()
+    public void RectAnnotation_HitTest_IncludesInteriorForMove()
     {
         var rect = new RectAnnotation
         {
@@ -60,8 +60,26 @@ public class AnnotationHelperTests
             Color = Color.Red,
             NativeSize = 4
         };
-        Assert.True(rect.HitTest(new PointF(0.2f, 0.4f), 0.02f)); // left border
-        Assert.False(rect.HitTest(new PointF(0.4f, 0.4f), 0.01f)); // deep interior
+        Assert.True(rect.HitTest(new PointF(0.2f, 0.4f), 0.02f)); // border
+        Assert.True(rect.HitTest(new PointF(0.4f, 0.4f), 0.01f)); // interior (drag to move)
+    }
+
+    [Fact]
+    public void HitTestRectHandle_CornersAndMove()
+    {
+        var b = new RectangleF(0.2f, 0.2f, 0.4f, 0.4f);
+        Assert.Equal("NW", AnnotationHelper.HitTestRectHandle(b, new PointF(0.2f, 0.2f), 0.03f, 0.02f));
+        Assert.Equal("SE", AnnotationHelper.HitTestRectHandle(b, new PointF(0.6f, 0.6f), 0.03f, 0.02f));
+        Assert.Equal("MOVE", AnnotationHelper.HitTestRectHandle(b, new PointF(0.4f, 0.4f), 0.03f, 0.02f));
+    }
+
+    [Fact]
+    public void ArrowShaftEnd_StopsBeforeTip()
+    {
+        var tip = new PointF(100, 0);
+        var shaft = AnnotationHelper.ArrowShaftEnd(new PointF(0, 0), tip, 4);
+        Assert.True(shaft.X < tip.X);
+        Assert.True(shaft.X > 50);
     }
 
     [Fact]

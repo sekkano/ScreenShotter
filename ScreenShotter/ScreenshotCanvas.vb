@@ -110,6 +110,13 @@ Public Class ScreenshotCanvas
 
     Public Event SelectionChanged As EventHandler
     Public Event TransformChanged As EventHandler(Of TransformChangedEventArgs)
+    ''' <summary>Raised when the user right-clicks a screenshot to return to Pointer mode.</summary>
+    Public Event PointerModeRequested As EventHandler
+
+    Public Sub RequestPointerMode()
+        ActiveTool = DrawingTool.Pointer
+        RaiseEvent PointerModeRequested(Me, EventArgs.Empty)
+    End Sub
 
     Public Function AddScreenshotImage(image As Image, Optional location As Point? = Nothing, Optional recordHistory As Boolean = True) As ScreenshotItem
         If image Is Nothing Then Throw New ArgumentNullException(NameOf(image))
@@ -469,6 +476,8 @@ Public Class ScreenshotCanvas
         If e.Button = MouseButtons.Left Then
             Focus()
             CancelInteractionsExcept(Nothing)
+        ElseIf e.Button = MouseButtons.Right Then
+            RequestPointerMode()
         End If
     End Sub
 

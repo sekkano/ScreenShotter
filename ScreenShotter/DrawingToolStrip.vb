@@ -162,10 +162,22 @@ Public Class DrawingToolStrip
     End Sub
 
     Private Sub OnPointerClick(sender As Object, e As EventArgs)
+        SwitchToPointer()
+    End Sub
+
+    ''' <summary>Leaves draw mode and selects Pointer (e.g. right-click on a screenshot).</summary>
+    Public Sub SwitchToPointer()
         _modeIsPointer = True
         SyncModeButtons()
         RaiseSettingsChanged()
     End Sub
+
+    ''' <summary>True when Pointer is the active mode.</summary>
+    Public ReadOnly Property IsPointerMode As Boolean
+        Get
+            Return _modeIsPointer
+        End Get
+    End Property
 
     Private Sub OnToolChanged(sender As Object, e As EventArgs)
         If _suppressEvents Then Return
@@ -173,7 +185,12 @@ Public Class DrawingToolStrip
         _settings.SelectTool(tool)
         UpdateControlsForTool(tool)
         SyncAppearanceControlsFromSettings()
-        EnterDrawMode()
+        ' Stay in Pointer when already there so a selected annotation can be restyled
+        If _modeIsPointer Then
+            RaiseSettingsChanged()
+        Else
+            EnterDrawMode()
+        End If
     End Sub
 
     Private Sub UpdateControlsForTool(tool As DrawingTool)
@@ -231,7 +248,7 @@ Public Class DrawingToolStrip
             If dlg.ShowDialog(FindForm()) = DialogResult.OK Then
                 _settings.BaseColor = dlg.Color
                 UpdateColorSwatch()
-                EnterDrawMode()
+                NotifyAppearanceChanged()
             End If
         End Using
     End Sub
@@ -241,7 +258,7 @@ Public Class DrawingToolStrip
         Dim idx = _cmbOpacity.SelectedIndex
         If idx >= 0 AndAlso idx < OpacityChoices.Length Then
             _settings.OpacityPercent = OpacityChoices(idx)
-            EnterDrawMode()
+            NotifyAppearanceChanged()
         End If
     End Sub
 
@@ -252,6 +269,17 @@ Public Class DrawingToolStrip
         Dim idx = _cmbThickness.SelectedIndex
         If idx >= 0 AndAlso idx < choices.Length Then
             _settings.Thickness = choices(idx)
+            NotifyAppearanceChanged()
+        End If
+    End Sub
+
+    ''' <summary>
+    ''' Appearance edits while in Pointer stay in Pointer so a selected annotation can be restyled.
+    ''' </summary>
+    Private Sub NotifyAppearanceChanged()
+        If _modeIsPointer Then
+            RaiseSettingsChanged()
+        Else
             EnterDrawMode()
         End If
     End Sub

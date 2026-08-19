@@ -20,7 +20,6 @@ Partial Public Class MovableScreenshotBox
         _pendingTextLocal = local
 
         If tool = DrawingTool.Text Then
-            ' Wait for mouse-up without drag to place text
             _mode = InteractMode.None
             Capture = False
             Return
@@ -106,12 +105,13 @@ Partial Public Class MovableScreenshotBox
             Return False
         End If
         Dim p = DrawingHelper.ClampNormalized(norm.Value)
-        Dim hitSlop = 0.02F
+        Dim hitSlop = 0.025F
+        Dim cornerSlop = 0.03F
 
-        ' Top-most first
         For i = _annotations.Count - 1 To 0 Step -1
             Dim ann = _annotations(i)
             Dim kind = AnnotEditKind.None
+            Dim handle = ""
 
             Dim arrow = TryCast(ann, ArrowAnnotation)
             If arrow IsNot Nothing Then
@@ -128,21 +128,16 @@ Partial Public Class MovableScreenshotBox
                     If text.HitTestWithSize(p, hitSlop, _naturalSize) Then
                         kind = AnnotEditKind.Move
                     End If
-                ElseIf ann.HitTest(p, hitSlop) Then
+                Else
                     Dim rect = TryCast(ann, RectAnnotation)
-                    If rect IsNot Nothing Then
-                        kind = AnnotEditKind.ResizeRect
-                        ' Interior of small rects: move instead
-                        Dim b = rect.GetBounds()
-                        Dim inner = b
-                        inner.Inflate(-0.012F, -0.012F)
-                        If inner.Width > 0.01F AndAlso inner.Height > 0.01F AndAlso inner.Contains(p) Then
+                    If rect IsNot Nothing AndAlso rect.HitTest(p, hitSlop) Then
+                        handle = AnnotationHelper.HitTestRectHandle(rect.GetBounds(), p, cornerSlop, hitSlop)
+                        If handle = "MOVE" OrElse handle = "" Then
                             kind = AnnotEditKind.Move
-                        ElseIf Not NearRectBorder(b, p, hitSlop) Then
-                            kind = AnnotEditKind.Move
+                            handle = "MOVE"
+                        Else
+                            kind = AnnotEditKind.ResizeRect
                         End If
-                    Else
-                        kind = AnnotEditKind.Move
                     End If
                 End If
             End If
@@ -153,9 +148,10 @@ Partial Public Class MovableScreenshotBox
             _annotEditOriginal = ann.Clone()
             _annotEditKind = kind
             _annotEditGrabNorm = p
+            _annotRectHandle = handle
             _mode = InteractMode.AnnotEdit
             Capture = True
-            Cursor = Cursors.SizeAll
+            Cursor = CursorForAnnotationEdit(kind, handle)
             Invalidate()
             Return True
         Next
@@ -164,14 +160,11 @@ Partial Public Class MovableScreenshotBox
         Return False
     End Function
 
-    Private Shared Function NearRectBorder(b As RectangleF, p As PointF, slop As Single) As Boolean
-        Dim outer = b
-        outer.Inflate(slop, slop)
-        If Not outer.Contains(p) Then Return False
-        Dim inner = b
-        inner.Inflate(-slop, -slop)
-        If inner.Width <= 0 OrElse inner.Height <= 0 Then Return True
-        Return Not inner.Contains(p)
+    Private Shared Function CursorForAnnotationEdit(kind As AnnotEditKind, handle As String) As Cursor
+        If kind = AnnotEditKind.ResizeRect Then
+            Return AnnotationHelper.CursorForRectHandle(handle)
+        End If
+        Return Cursors.SizeAll
     End Function
 
     Private Sub UpdateAnnotationEdit(local As Point)
@@ -183,9 +176,9 @@ Partial Public Class MovableScreenshotBox
 
         Select Case _annotEditKind
             Case AnnotEditKind.Move
-                ' Reset from original then translate (avoids drift)
                 CopyAnnotationState(_annotEditOriginal, _selectedAnnotation)
                 _selectedAnnotation.Translate(dx, dy)
+                Cursor = Cursors.SizeAll
 
             Case AnnotEditKind.MoveArrowStart
                 Dim arrow = TryCast(_selectedAnnotation, ArrowAnnotation)
@@ -199,55 +192,12 @@ Partial Public Class MovableScreenshotBox
                 Dim rect = TryCast(_selectedAnnotation, RectAnnotation)
                 Dim orig = TryCast(_annotEditOriginal, RectAnnotation)
                 If rect IsNot Nothing AndAlso orig IsNot Nothing Then
-                    ' Anchor opposite corner from grab relative to original bounds
-                    Dim b = orig.GetBounds()
-                    Dim anchor As PointF
-                    If Math.Abs(_annotEditGrabNorm.X - b.Left) <= Math.Abs(_annotEditGrabNorm.X - b.Right) Then
-                        anchor = New PointF(b.Right, If(Math.Abs(_annotEditGrabNorm.Y - b.Top) <= Math.Abs(_annotEditGrabNorm.Y - b.Bottom), b.Bottom, b.Top))
-                        If Math.Abs(_annotEditGrabNorm.Y - b.Top) > Math.Abs(_annotEditGrabNorm.Y - b.Bottom) Then
-                            anchor = New PointF(b.Right, b.Top)
-                        Else
-                            anchor = New PointF(b.Right, b.Bottom)
-                        End If
-                    Else
-                        If Math.Abs(_annotEditGrabNorm.Y - b.Top) <= Math.Abs(_annotEditGrabNorm.Y - b.Bottom) Then
-                            anchor = New PointF(b.Left, b.Bottom)
-                        Else
-                            anchor = New PointF(b.Left, b.Top)
-                        End If
-                    End If
-                    ' Simpler: resize from fixed opposite corner based on which corner grab is nearest
-                    anchor = OppositeCorner(b, NearestCorner(b, _annotEditGrabNorm))
-                    rect.Bounds = AnnotationHelper.RectFromCorners(anchor, p)
+                    rect.Bounds = AnnotationHelper.ResizeRectFromHandle(orig.GetBounds(), _annotRectHandle, p)
+                    Cursor = AnnotationHelper.CursorForRectHandle(_annotRectHandle)
                 End If
         End Select
         Invalidate()
     End Sub
-
-    Private Shared Function NearestCorner(b As RectangleF, p As PointF) As PointF
-        Dim corners = {
-            New PointF(b.Left, b.Top),
-            New PointF(b.Right, b.Top),
-            New PointF(b.Left, b.Bottom),
-            New PointF(b.Right, b.Bottom)
-        }
-        Dim best = corners(0)
-        Dim bestD = AnnotationHelper.Distance(p, best)
-        For i = 1 To corners.Length - 1
-            Dim d = AnnotationHelper.Distance(p, corners(i))
-            If d < bestD Then
-                bestD = d
-                best = corners(i)
-            End If
-        Next
-        Return best
-    End Function
-
-    Private Shared Function OppositeCorner(b As RectangleF, corner As PointF) As PointF
-        Dim cx = If(Math.Abs(corner.X - b.Left) < Math.Abs(corner.X - b.Right), b.Right, b.Left)
-        Dim cy = If(Math.Abs(corner.Y - b.Top) < Math.Abs(corner.Y - b.Bottom), b.Bottom, b.Top)
-        Return New PointF(cx, cy)
-    End Function
 
     Private Shared Sub CopyAnnotationState(source As AnnotationBase, dest As AnnotationBase)
         dest.Color = source.Color
@@ -277,12 +227,14 @@ Partial Public Class MovableScreenshotBox
         If _selectedAnnotation Is Nothing OrElse _annotEditOriginal Is Nothing Then
             _annotEditKind = AnnotEditKind.None
             _annotEditOriginal = Nothing
+            _annotRectHandle = ""
             Return
         End If
         Dim before = _annotEditOriginal
         Dim after = _selectedAnnotation.Clone()
         _annotEditKind = AnnotEditKind.None
         _annotEditOriginal = Nothing
+        _annotRectHandle = ""
         If Not AnnotationStatesEqual(before, after) Then
             _canvas?.RecordAnnotationChanged(ItemId, before, after)
         End If
@@ -315,9 +267,6 @@ Partial Public Class MovableScreenshotBox
         Return False
     End Function
 
-    ''' <summary>
-    ''' Applies the live before/after clone from undo onto the matching annotation instance.
-    ''' </summary>
     Public Sub ApplyAnnotationState(state As AnnotationBase)
         If state Is Nothing Then Return
         For Each ann In _annotations
@@ -360,4 +309,29 @@ Partial Public Class MovableScreenshotBox
             CSng((scaleX + scaleY) / 2.0)
         ann.Draw(g, destFrame, panX, panY, contentW, contentH, strokeScale, selected)
     End Sub
+
+    ''' <summary>Pointer hover cursor over a selected/hovered annotation.</summary>
+    Private Function CursorForAnnotationHover(local As Point) As Cursor
+        If _canvas Is Nothing OrElse _canvas.ActiveTool <> DrawingTool.Pointer Then
+            Return Nothing
+        End If
+        Dim norm = DrawingHelper.ViewportToNormalized(local, Size, _pan, _zoom)
+        If Not norm.HasValue Then Return Nothing
+        Dim p = DrawingHelper.ClampNormalized(norm.Value)
+        For i = _annotations.Count - 1 To 0 Step -1
+            Dim rect = TryCast(_annotations(i), RectAnnotation)
+            If rect IsNot Nothing AndAlso rect.HitTest(p, 0.025F) Then
+                Dim handle = AnnotationHelper.HitTestRectHandle(rect.GetBounds(), p, 0.03F, 0.025F)
+                Return AnnotationHelper.CursorForRectHandle(If(String.IsNullOrEmpty(handle), "MOVE", handle))
+            End If
+            If _annotations(i).HitTest(p, 0.025F) Then
+                Return Cursors.SizeAll
+            End If
+            Dim text = TryCast(_annotations(i), TextAnnotation)
+            If text IsNot Nothing AndAlso text.HitTestWithSize(p, 0.025F, _naturalSize) Then
+                Return Cursors.SizeAll
+            End If
+        Next
+        Return Nothing
+    End Function
 End Class
