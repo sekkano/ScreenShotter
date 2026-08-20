@@ -45,6 +45,7 @@ Partial Public Class MovableScreenshotBox
     Private ReadOnly _canvas As ScreenshotCanvas
     Private ReadOnly _strokes As New List(Of InkStroke)()
     Private _activeStroke As InkStroke
+    Private _selectedStroke As InkStroke
     Private _blurredImage As Bitmap
     Private ReadOnly _annotations As New List(Of AnnotationBase)()
     Private _selectedAnnotation As AnnotationBase
@@ -169,6 +170,32 @@ Partial Public Class MovableScreenshotBox
         Return False
     End Function
 
+    ''' <summary>
+    ''' Applies current strip color/opacity/size to the selected freehand stroke (if any).
+    ''' </summary>
+    Public Function ApplyStyleToSelectedStroke(settings As DrawingSettings) As Boolean
+        If settings Is Nothing OrElse _selectedStroke Is Nothing Then Return False
+
+        Dim beforeColor = _selectedStroke.Color
+        Dim beforeWidth = _selectedStroke.NativeWidth
+        Dim newWidth = DrawingHelper.ClampThickness(settings.Thickness)
+        Dim newColor = beforeColor
+        If _selectedStroke.Tool <> DrawingTool.Blur Then
+            Dim a = CInt(Math.Round(settings.OpacityPercent / 100.0 * 255.0))
+            newColor = Color.FromArgb(Math.Max(0, Math.Min(255, a)), settings.BaseColor)
+        End If
+
+        If newColor = beforeColor AndAlso Math.Abs(newWidth - beforeWidth) < 0.01F Then
+            Return False
+        End If
+
+        _selectedStroke.Color = newColor
+        _selectedStroke.NativeWidth = newWidth
+        _canvas?.RecordStrokeStyleChanged(ItemId, _selectedStroke, beforeColor, newColor, beforeWidth, newWidth)
+        Invalidate()
+        Return True
+    End Function
+
     Public Event PositionChanged As EventHandler(Of PositionChangedEventArgs)
     Public Event TransformChanged As EventHandler(Of TransformChangedEventArgs)
     Public Event SelectedChanged As EventHandler
@@ -272,8 +299,32 @@ Partial Public Class MovableScreenshotBox
     Public Function RemoveStroke(stroke As InkStroke) As Boolean
         If stroke Is Nothing Then Return False
         Dim removed = _strokes.Remove(stroke)
+        If Object.ReferenceEquals(_selectedStroke, stroke) Then
+            _selectedStroke = Nothing
+        End If
         If removed Then Invalidate()
         Return removed
+    End Function
+
+    ''' <summary>
+    ''' Deletes the selected freehand stroke or shape annotation. Returns False if nothing selected.
+    ''' </summary>
+    Public Function DeleteSelectedDrawing() As Boolean
+        If _selectedAnnotation IsNot Nothing Then
+            Dim victim = _selectedAnnotation
+            If RemoveAnnotation(victim) Then
+                _canvas?.RecordAnnotationRemoved(ItemId, victim)
+                Return True
+            End If
+        End If
+        If _selectedStroke IsNot Nothing Then
+            Dim victim = _selectedStroke
+            If RemoveStroke(victim) Then
+                _canvas?.RecordStrokeRemoved(ItemId, victim)
+                Return True
+            End If
+        End If
+        Return False
     End Function
 
     Public Function CloneStrokes() As List(Of InkStroke)
@@ -470,7 +521,7 @@ Partial Public Class MovableScreenshotBox
                 contentW,
                 contentH)
             g.DrawImage(_image, dest)
-            DrawAllStrokes(g, destFrame, scaleX, scaleY)
+            DrawAllStrokes(g, destFrame, scaleX, scaleY, highlightSelected:=False)
             DrawAllAnnotations(g, destFrame, scaleX, scaleY, selectedId:=Guid.Empty)
         Finally
             g.Restore(state)
@@ -534,9 +585,9 @@ Partial Public Class MovableScreenshotBox
         ' Ink + shapes above the image, below selection chrome
         g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
         Dim paintFrame As New Rectangle(0, 0, Width, Height)
-        DrawAllStrokes(g, paintFrame, 1.0, 1.0)
+        DrawAllStrokes(g, paintFrame, 1.0, 1.0, highlightSelected:=True)
         If _activeStroke IsNot Nothing Then
-            DrawStroke(g, _activeStroke, paintFrame, 1.0, 1.0)
+            DrawStroke(g, _activeStroke, paintFrame, 1.0, 1.0, selected:=False)
         End If
         Dim selId = If(_selectedAnnotation IsNot Nothing, _selectedAnnotation.Id, Guid.Empty)
         DrawAllAnnotations(g, paintFrame, 1.0, 1.0, selId)
@@ -564,13 +615,27 @@ Partial Public Class MovableScreenshotBox
         End If
     End Sub
 
-    Private Sub DrawAllStrokes(g As Graphics, destFrame As Rectangle, scaleX As Double, scaleY As Double)
+    Private Sub DrawAllStrokes(
+        g As Graphics,
+        destFrame As Rectangle,
+        scaleX As Double,
+        scaleY As Double,
+        highlightSelected As Boolean)
+
         For Each stroke In _strokes
-            DrawStroke(g, stroke, destFrame, scaleX, scaleY)
+            Dim sel = highlightSelected AndAlso Object.ReferenceEquals(stroke, _selectedStroke)
+            DrawStroke(g, stroke, destFrame, scaleX, scaleY, selected:=sel)
         Next
     End Sub
 
-    Private Sub DrawStroke(g As Graphics, stroke As InkStroke, destFrame As Rectangle, scaleX As Double, scaleY As Double)
+    Private Sub DrawStroke(
+        g As Graphics,
+        stroke As InkStroke,
+        destFrame As Rectangle,
+        scaleX As Double,
+        scaleY As Double,
+        Optional selected As Boolean = False)
+
         If stroke Is Nothing OrElse stroke.Points.Count = 0 Then Return
 
         Dim content = ZoomHelper.ContentSize(Size, _zoom)
@@ -587,6 +652,7 @@ Partial Public Class MovableScreenshotBox
 
         If stroke.Tool = DrawingTool.Blur Then
             DrawBlurStroke(g, pts, width, destFrame, panX, panY, contentW, contentH)
+            If selected Then DrawStrokeSelectionOutline(g, pts, width)
             Return
         End If
 
@@ -597,6 +663,10 @@ Partial Public Class MovableScreenshotBox
             g.CompositingMode = Drawing2D.CompositingMode.SourceOver
             g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
             g.PixelOffsetMode = Drawing2D.PixelOffsetMode.HighQuality
+
+            If selected Then
+                DrawStrokeSelectionOutline(g, pts, width)
+            End If
 
             ' Always round caps so highlighter start/stop is flush (flat caps look chiseled/offset)
             Using pen As New Pen(stroke.Color, width)
@@ -623,6 +693,25 @@ Partial Public Class MovableScreenshotBox
             g.SmoothingMode = prevSmooth
             g.PixelOffsetMode = prevPixel
         End Try
+    End Sub
+
+    Private Shared Sub DrawStrokeSelectionOutline(g As Graphics, pts As PointF(), width As Single)
+        Dim outline = Math.Max(width + 4.0F, 6.0F)
+        Using pen As New Pen(Color.FromArgb(200, 30, 120, 220), outline)
+            pen.StartCap = Drawing2D.LineCap.Round
+            pen.EndCap = Drawing2D.LineCap.Round
+            pen.LineJoin = Drawing2D.LineJoin.Round
+            pen.DashStyle = Drawing2D.DashStyle.Dash
+            If pts.Length = 1 Then
+                Dim r = outline / 2.0F
+                g.DrawEllipse(pen, pts(0).X - r, pts(0).Y - r, outline, outline)
+            Else
+                Using path As New Drawing2D.GraphicsPath()
+                    path.AddLines(pts)
+                    g.DrawPath(pen, path)
+                End Using
+            End If
+        End Using
     End Sub
 
     ''' <summary>
@@ -1097,11 +1186,7 @@ Partial Public Class MovableScreenshotBox
     Protected Overrides Sub OnKeyDown(e As KeyEventArgs)
         MyBase.OnKeyDown(e)
         If e.KeyCode = Keys.Delete OrElse e.KeyCode = Keys.Back Then
-            If _selectedAnnotation IsNot Nothing Then
-                Dim victim = _selectedAnnotation
-                If RemoveAnnotation(victim) Then
-                    _canvas?.RecordAnnotationRemoved(ItemId, victim)
-                End If
+            If DeleteSelectedDrawing() Then
                 e.Handled = True
                 e.SuppressKeyPress = True
                 Return

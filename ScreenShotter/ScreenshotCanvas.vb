@@ -114,6 +114,8 @@ Public Class ScreenshotCanvas
     Public Event PointerModeRequested As EventHandler
     ''' <summary>Raised when an annotation is selected so the strip can match tool/color/size.</summary>
     Public Event AnnotationSelected As EventHandler(Of AnnotationSelectedEventArgs)
+    ''' <summary>Raised when a freehand stroke is selected so the strip can match tool/color/size.</summary>
+    Public Event StrokeSelected As EventHandler(Of StrokeSelectedEventArgs)
 
     Public Sub RequestPointerMode()
         ActiveTool = DrawingTool.Pointer
@@ -123,6 +125,11 @@ Public Class ScreenshotCanvas
     Public Sub NotifyAnnotationSelected(annotation As AnnotationBase)
         If annotation Is Nothing Then Return
         RaiseEvent AnnotationSelected(Me, New AnnotationSelectedEventArgs(annotation))
+    End Sub
+
+    Public Sub NotifyStrokeSelected(stroke As InkStroke)
+        If stroke Is Nothing Then Return
+        RaiseEvent StrokeSelected(Me, New StrokeSelectedEventArgs(stroke))
     End Sub
 
     Public Function AddScreenshotImage(image As Image, Optional location As Point? = Nothing, Optional recordHistory As Boolean = True) As ScreenshotItem
@@ -175,6 +182,24 @@ Public Class ScreenshotCanvas
     Public Sub RecordStroke(itemId As Guid, stroke As InkStroke)
         If stroke Is Nothing Then Return
         _history.Push(New StrokeHistoryAction(Me, itemId, stroke))
+    End Sub
+
+    Public Sub RecordStrokeRemoved(itemId As Guid, stroke As InkStroke)
+        If stroke Is Nothing Then Return
+        _history.Push(New StrokeRemoveHistoryAction(Me, itemId, stroke))
+    End Sub
+
+    Public Sub RecordStrokeStyleChanged(
+        itemId As Guid,
+        stroke As InkStroke,
+        beforeColor As Color,
+        afterColor As Color,
+        beforeWidth As Single,
+        afterWidth As Single)
+
+        If stroke Is Nothing Then Return
+        _history.Push(New StrokeStyleHistoryAction(
+            Me, itemId, stroke, beforeColor, afterColor, beforeWidth, afterWidth))
     End Sub
 
     Public Sub RecordAnnotationAdded(itemId As Guid, annotation As AnnotationBase)

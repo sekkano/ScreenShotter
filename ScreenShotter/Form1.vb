@@ -44,15 +44,20 @@
     End Sub
 
     ''' <summary>
-    ''' Delete / Backspace removes the selected screenshot on the active tab.
-    ''' Ctrl+Z / Ctrl+Y undo and redo on the active tab.
+    ''' Delete / Backspace removes the selected drawing, or the screenshot if none.
+    ''' Ctrl+Z / Ctrl+Y undo and redo drawings and other edits on the active tab.
     ''' Ctrl+S saves the current tab composite.
     ''' Ctrl+C copies the current tab composite to the clipboard.
     ''' </summary>
     Protected Overrides Function ProcessCmdKey(ByRef msg As Message, keyData As Keys) As Boolean
         If keyData = Keys.Delete OrElse keyData = Keys.Back Then
             Dim canvas = GetActiveCanvas()
-            If canvas IsNot Nothing AndAlso canvas.SelectedBox IsNot Nothing Then
+            Dim box = canvas?.SelectedBox
+            If box IsNot Nothing Then
+                If box.DeleteSelectedDrawing() Then
+                    UpdateStatus()
+                    Return True
+                End If
                 If canvas.RemoveSelectedScreenshot() Then
                     UpdateStatus()
                     Return True
@@ -319,12 +324,17 @@
                 End If
                 UpdateStatus()
             End Sub
-        ' Color/size only — switching tools must not restyle the selected annotation
+        ' Color/size only — switching tools must not restyle the selected drawing
         AddHandler drawStrip.AppearanceChanged,
             Sub(sender As Object, e As EventArgs)
                 Dim strip = TryCast(sender, DrawingToolStrip)
                 If strip IsNot Nothing Then
-                    canvas.SelectedBox?.ApplyStyleToSelectedAnnotation(strip.Settings)
+                    Dim box = canvas.SelectedBox
+                    If box IsNot Nothing Then
+                        If Not box.ApplyStyleToSelectedAnnotation(strip.Settings) Then
+                            box.ApplyStyleToSelectedStroke(strip.Settings)
+                        End If
+                    End If
                 End If
                 UpdateStatus()
             End Sub
@@ -336,6 +346,12 @@
             Sub(sender As Object, e As AnnotationSelectedEventArgs)
                 If e?.Annotation IsNot Nothing Then
                     drawStrip.SyncFromAnnotation(e.Annotation)
+                End If
+            End Sub
+        AddHandler canvas.StrokeSelected,
+            Sub(sender As Object, e As StrokeSelectedEventArgs)
+                If e?.Stroke IsNot Nothing Then
+                    drawStrip.SyncFromStroke(e.Stroke)
                 End If
             End Sub
         ' Initial sync

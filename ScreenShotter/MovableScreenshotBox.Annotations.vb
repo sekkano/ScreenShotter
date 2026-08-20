@@ -3,10 +3,15 @@
 ''' </summary>
 Partial Public Class MovableScreenshotBox
 
-    Private Sub ClearAnnotationSelection()
-        If _selectedAnnotation Is Nothing Then Return
+    Private Sub ClearDrawingSelection()
+        If _selectedAnnotation Is Nothing AndAlso _selectedStroke Is Nothing Then Return
         _selectedAnnotation = Nothing
+        _selectedStroke = Nothing
         Invalidate()
+    End Sub
+
+    Private Sub ClearAnnotationSelection()
+        ClearDrawingSelection()
     End Sub
 
     Private Sub BeginAnnotate(local As Point, tool As DrawingTool)
@@ -93,6 +98,7 @@ Partial Public Class MovableScreenshotBox
     End Sub
 
     Private Sub SelectAnnotation(ann As AnnotationBase)
+        _selectedStroke = Nothing
         _selectedAnnotation = ann
         Invalidate()
         _canvas?.NotifyAnnotationSelected(ann)
@@ -105,13 +111,14 @@ Partial Public Class MovableScreenshotBox
 
         Dim norm = DrawingHelper.ViewportToNormalized(local, Size, _pan, _zoom)
         If Not norm.HasValue Then
-            ClearAnnotationSelection()
+            ClearDrawingSelection()
             Return False
         End If
         Dim p = DrawingHelper.ClampNormalized(norm.Value)
         Dim hitSlop = 0.025F
         Dim cornerSlop = 0.03F
 
+        ' Shapes sit above freehand ink in paint order — hit-test them first
         For i = _annotations.Count - 1 To 0 Step -1
             Dim ann = _annotations(i)
             Dim kind = AnnotEditKind.None
@@ -148,6 +155,7 @@ Partial Public Class MovableScreenshotBox
 
             If kind = AnnotEditKind.None Then Continue For
 
+            _selectedStroke = Nothing
             SelectAnnotation(ann)
             _annotEditOriginal = ann.Clone()
             _annotEditKind = kind
@@ -159,9 +167,33 @@ Partial Public Class MovableScreenshotBox
             Return True
         Next
 
-        ClearAnnotationSelection()
+        ' Freehand pen / highlighter / blur
+        For i = _strokes.Count - 1 To 0 Step -1
+            Dim stroke = _strokes(i)
+            Dim strokeSlop = HitSlopForStroke(stroke)
+            If DrawingHelper.HitTestStroke(stroke, p, strokeSlop) Then
+                SelectStroke(stroke)
+                ' Click alone selects; no drag-edit for freehand (Delete / Ctrl+Z to remove)
+                Return True
+            End If
+        Next
+
+        ClearDrawingSelection()
         Return False
     End Function
+
+    Private Function HitSlopForStroke(stroke As InkStroke) As Single
+        If _naturalSize.Width <= 0 Then Return 0.02F
+        Dim half = stroke.NativeWidth / CSng(_naturalSize.Width) * 0.55F
+        Return Math.Max(0.012F, half + 0.008F)
+    End Function
+
+    Private Sub SelectStroke(stroke As InkStroke)
+        _selectedAnnotation = Nothing
+        _selectedStroke = stroke
+        Invalidate()
+        _canvas?.NotifyStrokeSelected(stroke)
+    End Sub
 
     Private Shared Function CursorForAnnotationEdit(kind As AnnotEditKind, handle As String) As Cursor
         If kind = AnnotEditKind.ResizeRect Then

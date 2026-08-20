@@ -230,6 +230,31 @@ Public Class DrawingToolStrip
         RaiseSettingsChanged()
     End Sub
 
+    ''' <summary>
+    ''' Loads tool / color / size from a selected freehand stroke without changing Pointer vs Draw.
+    ''' </summary>
+    Public Sub SyncFromStroke(stroke As InkStroke)
+        If stroke Is Nothing OrElse Not DrawingHelper.IsInkTool(stroke.Tool) Then Return
+
+        _suppressEvents = True
+        Try
+            _settings.SelectTool(stroke.Tool)
+            _settings.BaseColor = Color.FromArgb(255, stroke.Color)
+            _settings.OpacityPercent = DrawingHelper.ClampOpacityPercent(
+                CInt(Math.Round(stroke.Color.A / 255.0 * 100.0)))
+            _settings.Thickness = DrawingHelper.ClampThickness(stroke.NativeWidth)
+
+            Dim idx = Array.IndexOf(ToolOrder, stroke.Tool)
+            If idx >= 0 Then _cmbTool.SelectedIndex = idx
+            UpdateControlsForTool(stroke.Tool)
+            SyncAppearanceControlsFromSettings()
+        Finally
+            _suppressEvents = False
+        End Try
+
+        RaiseSettingsChanged()
+    End Sub
+
     Private Sub OnToolChanged(sender As Object, e As EventArgs)
         If _suppressEvents Then Return
         Dim tool = ToolFromComboIndex(_cmbTool.SelectedIndex)

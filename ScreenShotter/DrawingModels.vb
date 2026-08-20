@@ -458,6 +458,22 @@ Public Module DrawingHelper
     End Function
 
     ''' <summary>
+    ''' True when <paramref name="norm"/> is within <paramref name="hitSlop"/> of the stroke path.
+    ''' </summary>
+    Public Function HitTestStroke(stroke As InkStroke, norm As PointF, hitSlop As Single) As Boolean
+        If stroke Is Nothing OrElse stroke.Points.Count = 0 Then Return False
+        If stroke.Points.Count = 1 Then
+            Return AnnotationHelper.Distance(norm, stroke.Points(0)) <= hitSlop
+        End If
+        For i = 0 To stroke.Points.Count - 2
+            If AnnotationHelper.DistanceToSegment(norm, stroke.Points(i), stroke.Points(i + 1)) <= hitSlop Then
+                Return True
+            End If
+        Next
+        Return False
+    End Function
+
+    ''' <summary>
     ''' Locks a sample to a horizontal line through the stroke origin (Shift+draw).
     ''' </summary>
     Public Function ConstrainHorizontal(sample As PointF, originY As Single) As PointF

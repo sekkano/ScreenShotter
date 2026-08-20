@@ -32,6 +32,93 @@ Public Class StrokeHistoryAction
 End Class
 
 ''' <summary>
+''' Undo deleting a freehand stroke (pen / highlighter / blur).
+''' </summary>
+Public Class StrokeRemoveHistoryAction
+    Implements IUndoAction
+
+    Private ReadOnly _canvas As ScreenshotCanvas
+    Private ReadOnly _itemId As Guid
+    Private ReadOnly _stroke As InkStroke
+
+    Public Sub New(canvas As ScreenshotCanvas, itemId As Guid, stroke As InkStroke)
+        _canvas = canvas
+        _itemId = itemId
+        _stroke = stroke
+    End Sub
+
+    Public ReadOnly Property Description As String Implements IUndoAction.Description
+        Get
+            Return "Delete stroke"
+        End Get
+    End Property
+
+    Public Sub Undo() Implements IUndoAction.Undo
+        Dim box = _canvas.FindBox(_itemId)
+        box?.AddStroke(_stroke)
+    End Sub
+
+    Public Sub Redo() Implements IUndoAction.Redo
+        Dim box = _canvas.FindBox(_itemId)
+        box?.RemoveStroke(_stroke)
+    End Sub
+End Class
+
+''' <summary>
+''' Undo restyling a freehand stroke (color / thickness).
+''' </summary>
+Public Class StrokeStyleHistoryAction
+    Implements IUndoAction
+
+    Private ReadOnly _stroke As InkStroke
+    Private ReadOnly _beforeColor As Color
+    Private ReadOnly _afterColor As Color
+    Private ReadOnly _beforeWidth As Single
+    Private ReadOnly _afterWidth As Single
+    Private ReadOnly _canvas As ScreenshotCanvas
+    Private ReadOnly _itemId As Guid
+
+    Public Sub New(
+        canvas As ScreenshotCanvas,
+        itemId As Guid,
+        stroke As InkStroke,
+        beforeColor As Color,
+        afterColor As Color,
+        beforeWidth As Single,
+        afterWidth As Single)
+
+        _canvas = canvas
+        _itemId = itemId
+        _stroke = stroke
+        _beforeColor = beforeColor
+        _afterColor = afterColor
+        _beforeWidth = beforeWidth
+        _afterWidth = afterWidth
+    End Sub
+
+    Public ReadOnly Property Description As String Implements IUndoAction.Description
+        Get
+            Return "Restyle stroke"
+        End Get
+    End Property
+
+    Public Sub Undo() Implements IUndoAction.Undo
+        Apply(_beforeColor, _beforeWidth)
+    End Sub
+
+    Public Sub Redo() Implements IUndoAction.Redo
+        Apply(_afterColor, _afterWidth)
+    End Sub
+
+    Private Sub Apply(color As Color, width As Single)
+        If _stroke Is Nothing Then Return
+        _stroke.Color = color
+        _stroke.NativeWidth = width
+        _canvas.FindBox(_itemId)?.Invalidate()
+    End Sub
+End Class
+
+''' <summary>
 ''' Undo move / resize / zoom / pan of a screenshot.
 ''' </summary>
 Public Class TransformHistoryAction
@@ -282,4 +369,15 @@ Public Class AnnotationSelectedEventArgs
     End Sub
 
     Public ReadOnly Property Annotation As AnnotationBase
+End Class
+
+''' <summary>Args for StrokeSelected on the canvas.</summary>
+Public Class StrokeSelectedEventArgs
+    Inherits EventArgs
+
+    Public Sub New(stroke As InkStroke)
+        Me.Stroke = stroke
+    End Sub
+
+    Public ReadOnly Property Stroke As InkStroke
 End Class

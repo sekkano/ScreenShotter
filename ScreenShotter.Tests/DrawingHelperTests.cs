@@ -146,6 +146,16 @@ public class DrawingHelperTests
     }
 
     [Fact]
+    public void HitTestStroke_DetectsNearPath()
+    {
+        var stroke = new InkStroke(DrawingTool.Pen, Color.Black, 4);
+        stroke.Points.Add(new PointF(0.1f, 0.1f));
+        stroke.Points.Add(new PointF(0.9f, 0.1f));
+        Assert.True(DrawingHelper.HitTestStroke(stroke, new PointF(0.5f, 0.1f), 0.02f));
+        Assert.False(DrawingHelper.HitTestStroke(stroke, new PointF(0.5f, 0.5f), 0.02f));
+    }
+
+    [Fact]
     public void ClampThickness_EnforcesRange()
     {
         Assert.Equal(DrawingHelper.MinThickness, DrawingHelper.ClampThickness(0));
