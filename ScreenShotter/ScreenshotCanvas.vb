@@ -202,6 +202,16 @@ Public Class ScreenshotCanvas
             Me, itemId, stroke, beforeColor, afterColor, beforeWidth, afterWidth))
     End Sub
 
+    Public Sub RecordStrokeMoved(
+        itemId As Guid,
+        stroke As InkStroke,
+        beforePoints As IList(Of PointF),
+        afterPoints As IList(Of PointF))
+
+        If stroke Is Nothing OrElse beforePoints Is Nothing OrElse afterPoints Is Nothing Then Return
+        _history.Push(New StrokeMoveHistoryAction(Me, itemId, stroke, beforePoints, afterPoints))
+    End Sub
+
     Public Sub RecordAnnotationAdded(itemId As Guid, annotation As AnnotationBase)
         If annotation Is Nothing Then Return
         _history.Push(New AnnotationAddHistoryAction(Me, itemId, annotation))

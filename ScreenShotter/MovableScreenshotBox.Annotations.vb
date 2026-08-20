@@ -167,13 +167,19 @@ Partial Public Class MovableScreenshotBox
             Return True
         Next
 
-        ' Freehand pen / highlighter / blur
+        ' Freehand pen / highlighter / blur — select and drag to move
         For i = _strokes.Count - 1 To 0 Step -1
             Dim stroke = _strokes(i)
             Dim strokeSlop = HitSlopForStroke(stroke)
             If DrawingHelper.HitTestStroke(stroke, p, strokeSlop) Then
                 SelectStroke(stroke)
-                ' Click alone selects; no drag-edit for freehand (Delete / Ctrl+Z to remove)
+                _strokeEditOriginalPoints = ClonePointList(stroke.Points)
+                _annotEditKind = AnnotEditKind.MoveStroke
+                _annotEditGrabNorm = p
+                _annotEditOriginal = Nothing
+                _mode = InteractMode.AnnotEdit
+                Capture = True
+                Cursor = Cursors.SizeAll
                 Return True
             End If
         Next
@@ -195,6 +201,24 @@ Partial Public Class MovableScreenshotBox
         _canvas?.NotifyStrokeSelected(stroke)
     End Sub
 
+    Private Shared Function ClonePointList(points As IList(Of PointF)) As List(Of PointF)
+        Return New List(Of PointF)(points)
+    End Function
+
+    Private Shared Sub ApplyStrokePoints(stroke As InkStroke, points As IList(Of PointF))
+        If stroke Is Nothing OrElse points Is Nothing Then Return
+        stroke.Points.Clear()
+        stroke.Points.AddRange(points)
+    End Sub
+
+    Private Shared Sub TranslateStrokePoints(stroke As InkStroke, source As IList(Of PointF), dx As Single, dy As Single)
+        If stroke Is Nothing OrElse source Is Nothing Then Return
+        stroke.Points.Clear()
+        For Each pt In source
+            stroke.Points.Add(AnnotationHelper.ClampNormalized(New PointF(pt.X + dx, pt.Y + dy)))
+        Next
+    End Sub
+
     Private Shared Function CursorForAnnotationEdit(kind As AnnotEditKind, handle As String) As Cursor
         If kind = AnnotEditKind.ResizeRect Then
             Return AnnotationHelper.CursorForRectHandle(handle)
@@ -203,11 +227,21 @@ Partial Public Class MovableScreenshotBox
     End Function
 
     Private Sub UpdateAnnotationEdit(local As Point)
-        If _selectedAnnotation Is Nothing OrElse _annotEditOriginal Is Nothing Then Return
         Dim norm = DrawingHelper.ViewportToNormalized(local, Size, _pan, _zoom)
         Dim p = If(norm.HasValue, DrawingHelper.ClampNormalized(norm.Value), _annotEditGrabNorm)
         Dim dx = p.X - _annotEditGrabNorm.X
         Dim dy = p.Y - _annotEditGrabNorm.Y
+
+        If _annotEditKind = AnnotEditKind.MoveStroke Then
+            If _selectedStroke IsNot Nothing AndAlso _strokeEditOriginalPoints IsNot Nothing Then
+                TranslateStrokePoints(_selectedStroke, _strokeEditOriginalPoints, dx, dy)
+                Cursor = Cursors.SizeAll
+                Invalidate()
+            End If
+            Return
+        End If
+
+        If _selectedAnnotation Is Nothing OrElse _annotEditOriginal Is Nothing Then Return
 
         Select Case _annotEditKind
             Case AnnotEditKind.Move
@@ -259,6 +293,11 @@ Partial Public Class MovableScreenshotBox
     End Sub
 
     Private Sub CommitAnnotationEdit()
+        If _annotEditKind = AnnotEditKind.MoveStroke Then
+            CommitStrokeMove()
+            Return
+        End If
+
         If _selectedAnnotation Is Nothing OrElse _annotEditOriginal Is Nothing Then
             _annotEditKind = AnnotEditKind.None
             _annotEditOriginal = Nothing
@@ -275,6 +314,33 @@ Partial Public Class MovableScreenshotBox
         End If
         Invalidate()
     End Sub
+
+    Private Sub CommitStrokeMove()
+        Dim stroke = _selectedStroke
+        Dim before = _strokeEditOriginalPoints
+        _annotEditKind = AnnotEditKind.None
+        _strokeEditOriginalPoints = Nothing
+        If stroke Is Nothing OrElse before Is Nothing Then
+            Invalidate()
+            Return
+        End If
+        Dim after = ClonePointList(stroke.Points)
+        If Not PointListsEqual(before, after) Then
+            _canvas?.RecordStrokeMoved(ItemId, stroke, before, after)
+        End If
+        Invalidate()
+    End Sub
+
+    Private Shared Function PointListsEqual(a As IList(Of PointF), b As IList(Of PointF)) As Boolean
+        If a Is Nothing OrElse b Is Nothing Then Return a Is b
+        If a.Count <> b.Count Then Return False
+        For i = 0 To a.Count - 1
+            If Math.Abs(a(i).X - b(i).X) > 0.0001F OrElse Math.Abs(a(i).Y - b(i).Y) > 0.0001F Then
+                Return False
+            End If
+        Next
+        Return True
+    End Function
 
     Private Shared Function AnnotationStatesEqual(a As AnnotationBase, b As AnnotationBase) As Boolean
         If a Is Nothing OrElse b Is Nothing Then Return a Is b

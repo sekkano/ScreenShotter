@@ -119,6 +119,54 @@ Public Class StrokeStyleHistoryAction
 End Class
 
 ''' <summary>
+''' Undo moving a freehand stroke (translate all points).
+''' </summary>
+Public Class StrokeMoveHistoryAction
+    Implements IUndoAction
+
+    Private ReadOnly _canvas As ScreenshotCanvas
+    Private ReadOnly _itemId As Guid
+    Private ReadOnly _stroke As InkStroke
+    Private ReadOnly _beforePoints As List(Of PointF)
+    Private ReadOnly _afterPoints As List(Of PointF)
+
+    Public Sub New(
+        canvas As ScreenshotCanvas,
+        itemId As Guid,
+        stroke As InkStroke,
+        beforePoints As IList(Of PointF),
+        afterPoints As IList(Of PointF))
+
+        _canvas = canvas
+        _itemId = itemId
+        _stroke = stroke
+        _beforePoints = New List(Of PointF)(beforePoints)
+        _afterPoints = New List(Of PointF)(afterPoints)
+    End Sub
+
+    Public ReadOnly Property Description As String Implements IUndoAction.Description
+        Get
+            Return "Move stroke"
+        End Get
+    End Property
+
+    Public Sub Undo() Implements IUndoAction.Undo
+        Apply(_beforePoints)
+    End Sub
+
+    Public Sub Redo() Implements IUndoAction.Redo
+        Apply(_afterPoints)
+    End Sub
+
+    Private Sub Apply(points As List(Of PointF))
+        If _stroke Is Nothing OrElse points Is Nothing Then Return
+        _stroke.Points.Clear()
+        _stroke.Points.AddRange(points)
+        _canvas.FindBox(_itemId)?.Invalidate()
+    End Sub
+End Class
+
+''' <summary>
 ''' Undo move / resize / zoom / pan of a screenshot.
 ''' </summary>
 Public Class TransformHistoryAction

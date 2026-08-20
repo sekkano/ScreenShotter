@@ -25,6 +25,7 @@ Partial Public Class MovableScreenshotBox
         MoveArrowStart
         MoveArrowEnd
         ScaleText
+        MoveStroke
     End Enum
 
     Private Enum ResizeEdge
@@ -56,6 +57,7 @@ Partial Public Class MovableScreenshotBox
     Private _annotEditOriginal As AnnotationBase
     Private _annotEditGrabNorm As PointF
     Private _annotRectHandle As String = ""
+    Private _strokeEditOriginalPoints As List(Of PointF)
     Private _pendingTextClick As Boolean
     Private _pendingTextLocal As Point
     Private _zoom As Double = ZoomHelper.DefaultZoom
@@ -216,6 +218,7 @@ Partial Public Class MovableScreenshotBox
         _pendingTextClick = False
         _annotEditKind = AnnotEditKind.None
         _annotEditOriginal = Nothing
+        _strokeEditOriginalPoints = Nothing
         _drawLockHorizontal = False
         _hasTransformBaseline = False
         Cursor = CursorForIdle(PointToClient(Cursor.Position))

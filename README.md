@@ -168,7 +168,7 @@ Each tool **remembers** its own color and size when you switch back and forth. W
 ### Drawing tips
 
 - Click **Draw**, pick a tool, then drag (or click for Text) on a screenshot.
-- Switch to **Pointer** and click a drawing (pen, highlighter, blur, rectangle, arrow, or text) to select it; the toolbar loads its tool/**color**/**size**. **Delete** removes the selected drawing (otherwise Delete removes the screenshot). **Ctrl+Z** undoes drawings and other edits.
+- Switch to **Pointer** and click a drawing (pen, highlighter, blur, rectangle, arrow, or text) to select it; the toolbar loads its tool/**color**/**size**. Drag freehand strokes to **move** them. **Delete** removes the selected drawing (otherwise Delete removes the screenshot). **Ctrl+Z** undoes drawings and other edits.
 - **Rectangle:** drag the **inside** to move (four-way cursor); drag **corners/edges** to resize (diagonal/axis cursors). Change Color/Size on the strip to restyle the selection.
 - **Right-click** a screenshot (or empty canvas) to jump back to the **Pointer** tool.
 - **Ctrl + drag** still **moves** the screenshot while a draw tool is active.
